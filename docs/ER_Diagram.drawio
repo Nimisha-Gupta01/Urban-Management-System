@@ -799,101 +799,101 @@
     <!-- ══════════════════════════════════════════════════════════════ -->
 
     <!-- Zone 1→N Road -->
-    <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="z_r1" target="rd_r2" parent="1">
+    <mxCell id="e1" style="rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=block;endFill=0;startArrow=none;" edge="1" source="z_r1" target="rd_r2" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Zone 1→N Junction -->
-    <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="z_r1" target="jn_r2" parent="1">
+    <mxCell id="e2" style="rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=block;endFill=0;startArrow=none;" edge="1" source="z_r1" target="jn_r2" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Road 1→N Road_Junction -->
-    <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="rd_r1" target="rj_r1" parent="1">
+    <mxCell id="e3" style="rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=block;endFill=0;startArrow=none;" edge="1" source="rd_r1" target="rj_r1" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Junction 1→N Road_Junction -->
-    <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="jn_r1" target="rj_r2" parent="1">
+    <mxCell id="e4" style="rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=block;endFill=0;startArrow=none;" edge="1" source="jn_r1" target="rj_r2" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Junction 1→N Traffic_Observation -->
-    <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="jn_r1" target="ob_r2" parent="1">
+    <mxCell id="e5" style="rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=block;endFill=0;startArrow=none;" edge="1" source="jn_r1" target="ob_r2" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Road 1→N Traffic_Observation -->
-    <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="rd_r1" target="ob_r3" parent="1">
+    <mxCell id="e6" style="rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=block;endFill=0;startArrow=none;" edge="1" source="rd_r1" target="ob_r3" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Junction 1→N Traffic_Signal -->
-    <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="jn_r1" target="sg_r2" parent="1">
+    <mxCell id="e7" style="rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=block;endFill=0;startArrow=none;" edge="1" source="jn_r1" target="sg_r2" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Junction 1→N Sensor -->
-    <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="jn_r1" target="sn_r2" parent="1">
+    <mxCell id="e8" style="rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=block;endFill=0;startArrow=none;" edge="1" source="jn_r1" target="sn_r2" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Road 0..1→N Incident -->
-    <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="rd_r1" target="ic_r2" parent="1">
+    <mxCell id="e9" style="rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=block;endFill=0;startArrow=none;" edge="1" source="rd_r1" target="ic_r2" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Junction 0..1→N Incident -->
-    <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="jn_r1" target="ic_r3" parent="1">
+    <mxCell id="e10" style="rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=block;endFill=0;startArrow=none;" edge="1" source="jn_r1" target="ic_r3" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Vehicle 0..1→N Incident -->
-    <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="vh_r1" target="ic_r4" parent="1">
+    <mxCell id="e11" style="rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=block;endFill=0;startArrow=none;" edge="1" source="vh_r1" target="ic_r4" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Driver 1→N Vehicle -->
-    <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="dr_r1" target="vh_r2" parent="1">
+    <mxCell id="e12" style="rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=block;endFill=0;startArrow=none;" edge="1" source="dr_r1" target="vh_r2" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Incident 1→N Audit (dashed = trigger-populated) -->
-    <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" edge="1" source="ic_r1" target="au_r2" parent="1">
+    <mxCell id="e13" style="rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;entryX=0;entryY=0.5;dashed=1;endArrow=block;endFill=0;startArrow=none;" edge="1" source="ic_r1" target="au_r2" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Incident → ISA_Incident -->
-    <mxCell id="e14" style="endArrow=open;startArrow=none;exitX=1;exitY=0.5;" edge="1" source="incident" target="isa_inc" parent="1">
+    <mxCell id="e14" style="endArrow=block;endFill=0;startArrow=none;" edge="1" source="incident" target="isa_inc" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
-    <mxCell id="e15" style="endArrow=open;" edge="1" source="isa_inc" target="iacc" parent="1">
+    <mxCell id="e15" style="endArrow=block;endFill=0;startArrow=none;" edge="1" source="isa_inc" target="iacc" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
-    <mxCell id="e16" style="endArrow=open;" edge="1" source="isa_inc" target="ibrkd" parent="1">
+    <mxCell id="e16" style="endArrow=block;endFill=0;startArrow=none;" edge="1" source="isa_inc" target="ibrkd" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
-    <mxCell id="e17" style="endArrow=open;" edge="1" source="isa_inc" target="iroad" parent="1">
+    <mxCell id="e17" style="endArrow=block;endFill=0;startArrow=none;" edge="1" source="isa_inc" target="iroad" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
-    <mxCell id="e18" style="endArrow=open;" edge="1" source="isa_inc" target="iflood" parent="1">
+    <mxCell id="e18" style="endArrow=block;endFill=0;startArrow=none;" edge="1" source="isa_inc" target="iflood" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Vehicle → ISA_Vehicle -->
-    <mxCell id="e19" style="endArrow=open;startArrow=none;exitX=1;exitY=0.5;" edge="1" source="vehicle" target="isa_veh" parent="1">
+    <mxCell id="e19" style="endArrow=block;endFill=0;startArrow=none;" edge="1" source="vehicle" target="isa_veh" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
-    <mxCell id="e20" style="endArrow=open;" edge="1" source="isa_veh" target="vcar" parent="1">
+    <mxCell id="e20" style="endArrow=block;endFill=0;startArrow=none;" edge="1" source="isa_veh" target="vcar" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
-    <mxCell id="e21" style="endArrow=open;" edge="1" source="isa_veh" target="vtruck" parent="1">
+    <mxCell id="e21" style="endArrow=block;endFill=0;startArrow=none;" edge="1" source="isa_veh" target="vtruck" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
-    <mxCell id="e22" style="endArrow=open;" edge="1" source="isa_veh" target="vmoto" parent="1">
+    <mxCell id="e22" style="endArrow=block;endFill=0;startArrow=none;" edge="1" source="isa_veh" target="vmoto" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
-    <mxCell id="e23" style="endArrow=open;" edge="1" source="isa_veh" target="vbus" parent="1">
+    <mxCell id="e23" style="endArrow=block;endFill=0;startArrow=none;" edge="1" source="isa_veh" target="vbus" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
