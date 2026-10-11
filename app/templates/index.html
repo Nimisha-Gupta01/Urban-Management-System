@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Urban Traffic Management System</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<nav>
+  <span class="brand">🚦 Urban Traffic Management — Bengaluru</span>
+  <a href="/" class="active">Dashboard</a>
+  <a href="/traffic">Traffic</a>
+  <a href="/incidents">Incidents</a>
+  <a href="/observation">Add Observation</a>
+  <a href="/roads">Roads &amp; Junctions</a>
+  <select id="roleSelect" title="Simulated role" style="margin-left:12px;padding:4px 8px;border-radius:4px;font-size:12px;border:none;background:rgba(255,255,255,.15);color:#fff;cursor:pointer">
+    <option value="public">Role: Public</option>
+    <option value="officer">Role: Officer</option>
+    <option value="admin">Role: Admin</option>
+  </select>
+</nav>
+
+<div class="page">
+  <h1>Real-Time Traffic Dashboard</h1>
+  <p class="subtitle">Bengaluru — Live city-wide congestion overview &nbsp;·&nbsp; Auto-refreshes every 60 s</p>
+
+  <!-- KPI cards -->
+  <div class="kpi-grid" id="kpiGrid">
+    <div class="kpi-card blue"><span class="label">Observations (24 h)</span><span class="value" id="kpiObs">—</span></div>
+    <div class="kpi-card amber"><span class="label">High Congestion Events</span><span class="value" id="kpiHigh">—</span></div>
+    <div class="kpi-card green"><span class="label">City Avg Speed (km/h)</span><span class="value" id="kpiSpeed">—</span></div>
+    <div class="kpi-card red"><span class="label">Open Incidents</span><span class="value" id="kpiInc">—</span></div>
+  </div>
+
+  <!-- Incident severity breakdown -->
+  <div class="card" id="incSummaryCard">
+    <div class="card-header">Open Incidents by Severity</div>
+    <div class="card-body" style="padding:14px 16px; display:flex; gap:16px; flex-wrap:wrap;" id="incSummaryBody">
+      <span class="text-muted">Loading…</span>
+    </div>
+  </div>
+
+  <!-- Junction status table -->
+  <div class="card">
+    <div class="card-header">Junction Status — Most Recent Observation</div>
+    <div class="card-body">
+      <table>
+        <thead>
+          <tr>
+            <th>Junction</th>
+            <th>Zone</th>
+            <th>Last Seen</th>
+            <th>Vehicles</th>
+            <th>Avg Speed</th>
+            <th>Congestion</th>
+            <th>Weather</th>
+            <th>Signal</th>
+          </tr>
+        </thead>
+        <tbody id="junctionBody"><tr><td colspan="8" class="empty-msg">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Zone summary table -->
+  <div class="card">
+    <div class="card-header">Zone Summary (Last 24 h)</div>
+    <div class="card-body">
+      <table>
+        <thead>
+          <tr>
+            <th>Zone</th>
+            <th>Type</th>
+            <th>Junctions</th>
+            <th>Roads</th>
+            <th>Observations</th>
+            <th>Avg Vehicles</th>
+            <th>Avg Speed</th>
+            <th>Open Incidents</th>
+          </tr>
+        </thead>
+        <tbody id="zoneBody"><tr><td colspan="8" class="empty-msg">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="/static/js/app.js"></script>
+<script>
+async function loadDashboard() {
+  const { ok, data } = await apiFetch('/api/dashboard');
+  if (!ok) { showToast('Failed to load dashboard', 'error'); return; }
+
+  // KPIs
+  const k = data.city_kpis || {};
+  document.getElementById('kpiObs').textContent   = k.total_observations_24h ?? '—';
+  document.getElementById('kpiHigh').textContent  = k.high_congestion_count ?? '—';
+  document.getElementById('kpiSpeed').textContent = k.city_avg_speed ?? '—';
+
+  // Open incident total
+  const total = (data.incident_summary || []).reduce((s, r) => s + r.count, 0);
+  document.getElementById('kpiInc').textContent = total;
+
+  // Incident severity pills
+  const pills = (data.incident_summary || []).map(r =>
+    `<div style="text-align:center">
+       ${severityBadge(r.severity)}
+       <div style="font-size:20px;font-weight:700;margin-top:4px">${r.count}</div>
+     </div>`
+  ).join('');
+  document.getElementById('incSummaryBody').innerHTML = pills || '<span class="text-muted">No open incidents</span>';
+
+  // Junctions
+  renderTable('junctionBody', data.junctions, r => `
+    <tr>
+      <td><strong>${r.junction_name}</strong></td>
+      <td>${r.zone_name || '—'}</td>
+      <td class="text-muted">${r.observation_time ? r.observation_time.slice(0,16) : '—'}</td>
+      <td>${r.vehicle_count ?? '—'}</td>
+      <td>${r.avg_speed_kmph ?? '—'} km/h</td>
+      <td>${congestionBadge(r.congestion_level)}</td>
+      <td>${r.weather_condition || '—'}</td>
+      <td>${signalBadge(r.signal_status)}</td>
+    </tr>`);
+
+  // Zones
+  renderTable('zoneBody', data.zones, r => `
+    <tr>
+      <td><strong>${r.zone_name}</strong></td>
+      <td>${r.zone_type || '—'}</td>
+      <td>${r.total_junctions}</td>
+      <td>${r.total_roads}</td>
+      <td>${r.observations_last_24h || 0}</td>
+      <td>${r.avg_vehicle_count || '—'}</td>
+      <td>${r.avg_speed_kmph || '—'} km/h</td>
+      <td>${r.open_incidents > 0 ? `<strong style="color:var(--danger)">${r.open_incidents}</strong>` : '0'}</td>
+    </tr>`);
+}
+
+loadDashboard();
+setInterval(loadDashboard, 60000);
+</script>
+</body>
+</html>

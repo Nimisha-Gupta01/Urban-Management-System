@@ -1,129 +1,245 @@
+-- ============================================================
 -- Urban Road & Real-Time Traffic Management System
 -- BITS Pilani WILP | SESAP ZC337
--- schema.sql — CREATE TABLE statements
--- Status: To be finalised after normalization (Phase 3)
+-- schema.sql — Complete DDL: Tables, Indexes, Constraints
+-- DBSA Concepts Covered: Three-schema architecture (internal),
+--   ER-to-Relational mapping (all 7 rules), BCNF normalization,
+--   B+ Tree indexing, Hash indexing, Data integrity constraints
+-- ============================================================
 
--- Enable foreign key support in SQLite
 PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;  -- Write-Ahead Log for recovery demonstration
 
--- ZONE
-CREATE TABLE Zone (
-    zone_id       INTEGER PRIMARY KEY,
-    zone_name     TEXT    NOT NULL,
-    city          TEXT    NOT NULL,
-    area_sqkm     REAL,
-    zone_type     TEXT
+-- ============================================================
+-- ZONE  (Strong entity, Rule 1)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS Zone (
+    zone_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    zone_name  TEXT    NOT NULL,
+    city       TEXT    NOT NULL DEFAULT 'Bengaluru',
+    area_sqkm  REAL    CHECK (area_sqkm > 0),
+    zone_type  TEXT    CHECK (zone_type IN ('Residential','Commercial','Industrial','Mixed','IT Corridor'))
 );
 
--- ROAD
-CREATE TABLE Road (
-    road_id        INTEGER PRIMARY KEY,
+-- ============================================================
+-- ROAD  (Strong entity, Rule 1 + 1:N with Zone, Rule 4)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS Road (
+    road_id        INTEGER PRIMARY KEY AUTOINCREMENT,
     road_name      TEXT    NOT NULL,
-    road_type      TEXT,
-    length_km      REAL,
-    num_lanes      INTEGER,
-    speed_limit    INTEGER,
-    surface_type   TEXT,
-    direction_type TEXT,
+    road_type      TEXT    CHECK (road_type IN ('National Highway','State Highway','City Road','Ring Road','Lane','Flyover')),
+    length_km      REAL    CHECK (length_km > 0),
+    num_lanes      INTEGER CHECK (num_lanes > 0),
+    speed_limit    INTEGER CHECK (speed_limit BETWEEN 10 AND 120),
+    surface_type   TEXT    CHECK (surface_type IN ('Asphalt','Concrete','Gravel','Mixed')),
+    direction_type TEXT    CHECK (direction_type IN ('One-way','Two-way','Divided')),
     zone_id        INTEGER NOT NULL,
-    FOREIGN KEY (zone_id) REFERENCES Zone(zone_id)
+    FOREIGN KEY (zone_id) REFERENCES Zone(zone_id) ON DELETE RESTRICT
 );
 
--- JUNCTION
-CREATE TABLE Junction (
-    junction_id      INTEGER PRIMARY KEY,
+-- ============================================================
+-- JUNCTION  (Strong entity, Rule 1 + 1:N with Zone, Rule 4)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS Junction (
+    junction_id      INTEGER PRIMARY KEY AUTOINCREMENT,
     junction_name    TEXT    NOT NULL,
-    junction_type    TEXT,
-    latitude         REAL,
-    longitude        REAL,
-    signal_controlled INTEGER DEFAULT 0,
+    junction_type    TEXT    CHECK (junction_type IN ('Signalised','Unsignalised','Roundabout','Flyover','Underpass')),
+    latitude         REAL    CHECK (latitude  BETWEEN 12.7 AND 13.2),
+    longitude        REAL    CHECK (longitude BETWEEN 77.4 AND 77.8),
+    signal_controlled INTEGER DEFAULT 0 CHECK (signal_controlled IN (0,1)),
+    congestion_status TEXT   DEFAULT 'NORMAL' CHECK (congestion_status IN ('NORMAL','HIGH')),
     zone_id          INTEGER NOT NULL,
-    FOREIGN KEY (zone_id) REFERENCES Zone(zone_id)
+    FOREIGN KEY (zone_id) REFERENCES Zone(zone_id) ON DELETE RESTRICT
 );
 
--- ROAD_JUNCTION (M:N bridge)
-CREATE TABLE Road_Junction (
-    road_id      INTEGER NOT NULL,
-    junction_id  INTEGER NOT NULL,
-    position_type TEXT,
+-- ============================================================
+-- ROAD_JUNCTION  (M:N bridge table, Rule 5)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS Road_Junction (
+    road_id       INTEGER NOT NULL,
+    junction_id   INTEGER NOT NULL,
+    position_type TEXT    CHECK (position_type IN ('Start','End','Intermediate')),
     PRIMARY KEY (road_id, junction_id),
-    FOREIGN KEY (road_id)     REFERENCES Road(road_id),
-    FOREIGN KEY (junction_id) REFERENCES Junction(junction_id)
+    FOREIGN KEY (road_id)     REFERENCES Road(road_id)     ON DELETE CASCADE,
+    FOREIGN KEY (junction_id) REFERENCES Junction(junction_id) ON DELETE CASCADE
 );
 
--- TRAFFIC_SIGNAL
-CREATE TABLE Traffic_Signal (
-    signal_id          INTEGER PRIMARY KEY,
+-- ============================================================
+-- TRAFFIC_SIGNAL  (Strong entity + 1:N with Junction, Rule 4)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS Traffic_Signal (
+    signal_id          INTEGER PRIMARY KEY AUTOINCREMENT,
     junction_id        INTEGER NOT NULL,
-    signal_type        TEXT,
+    signal_type        TEXT    CHECK (signal_type IN ('Standard','Adaptive','Pedestrian','Emergency')),
     installed_date     DATE,
-    operational_status TEXT,
-    green_duration_sec INTEGER,
-    FOREIGN KEY (junction_id) REFERENCES Junction(junction_id)
+    operational_status TEXT    CHECK (operational_status IN ('Active','Inactive','Faulty','Under Maintenance')),
+    green_duration_sec INTEGER CHECK (green_duration_sec > 0),
+    FOREIGN KEY (junction_id) REFERENCES Junction(junction_id) ON DELETE RESTRICT
 );
 
--- DRIVER
-CREATE TABLE Driver (
-    driver_id  INTEGER PRIMARY KEY,
+-- ============================================================
+-- DRIVER  (Strong entity, Rule 1)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS Driver (
+    driver_id  INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT    NOT NULL,
-    license_no TEXT    UNIQUE,
+    license_no TEXT    UNIQUE NOT NULL,
     dob        DATE,
     contact    TEXT,
     address    TEXT
 );
 
--- VEHICLE
-CREATE TABLE Vehicle (
-    vehicle_id       INTEGER PRIMARY KEY,
+-- ============================================================
+-- VEHICLE  (Strong entity, Rule 1 + 1:N with Driver, Rule 4)
+-- Hash-equivalent index on license_plate for O(1) exact lookup
+-- ============================================================
+CREATE TABLE IF NOT EXISTS Vehicle (
+    vehicle_id       INTEGER PRIMARY KEY AUTOINCREMENT,
     license_plate    TEXT    UNIQUE NOT NULL,
-    vehicle_type     TEXT,
+    vehicle_type     TEXT    CHECK (vehicle_type IN ('Car','Truck','Motorcycle','Bus','Auto','Other')),
     make             TEXT,
     model            TEXT,
-    year             INTEGER,
-    registered_state TEXT,
+    year             INTEGER CHECK (year BETWEEN 1990 AND 2030),
+    registered_state TEXT    DEFAULT 'Karnataka',
     owner_id         INTEGER,
-    FOREIGN KEY (owner_id) REFERENCES Driver(driver_id)
+    FOREIGN KEY (owner_id) REFERENCES Driver(driver_id) ON DELETE SET NULL
 );
 
--- INCIDENT
-CREATE TABLE Incident (
-    incident_id       INTEGER PRIMARY KEY,
-    incident_type     TEXT    NOT NULL,
-    severity          TEXT,
+-- ============================================================
+-- INCIDENT  (Strong entity + multi-FK 1:N, Rules 1+4)
+-- Nullable FKs model partial participation in relationships
+-- ============================================================
+CREATE TABLE IF NOT EXISTS Incident (
+    incident_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident_type     TEXT    NOT NULL CHECK (incident_type IN ('Accident','Breakdown','Roadblock','Flooding')),
+    severity          TEXT    CHECK (severity IN ('LOW','MEDIUM','HIGH','CRITICAL')),
     description       TEXT,
-    reported_datetime DATETIME NOT NULL,
+    reported_datetime DATETIME NOT NULL DEFAULT (datetime('now')),
     resolved_datetime DATETIME,
     road_id           INTEGER,
     junction_id       INTEGER,
     vehicle_id        INTEGER,
     reported_by       TEXT,
-    FOREIGN KEY (road_id)     REFERENCES Road(road_id),
-    FOREIGN KEY (junction_id) REFERENCES Junction(junction_id),
-    FOREIGN KEY (vehicle_id)  REFERENCES Vehicle(vehicle_id)
+    FOREIGN KEY (road_id)     REFERENCES Road(road_id)         ON DELETE SET NULL,
+    FOREIGN KEY (junction_id) REFERENCES Junction(junction_id) ON DELETE SET NULL,
+    FOREIGN KEY (vehicle_id)  REFERENCES Vehicle(vehicle_id)   ON DELETE SET NULL
 );
 
--- TRAFFIC_OBSERVATION
-CREATE TABLE Traffic_Observation (
-    obs_id           INTEGER PRIMARY KEY,
-    junction_id      INTEGER NOT NULL,
-    road_id          INTEGER NOT NULL,
-    observation_time DATETIME NOT NULL,
-    vehicle_count    INTEGER,
-    avg_speed_kmph   REAL,
-    congestion_level TEXT,
-    weather_condition TEXT,
-    data_source      TEXT,
-    FOREIGN KEY (junction_id) REFERENCES Junction(junction_id),
-    FOREIGN KEY (road_id)     REFERENCES Road(road_id)
+-- ============================================================
+-- TRAFFIC_OBSERVATION  (Strong entity + 1:N with Junction+Road)
+-- Core table demonstrating normalization (see SRS Section 4.3)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS Traffic_Observation (
+    obs_id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    junction_id       INTEGER NOT NULL,
+    road_id           INTEGER NOT NULL,
+    observation_time  DATETIME NOT NULL DEFAULT (datetime('now')),
+    vehicle_count     INTEGER  CHECK (vehicle_count >= 0),
+    avg_speed_kmph    REAL     CHECK (avg_speed_kmph >= 0),
+    congestion_level  TEXT     CHECK (congestion_level IN ('LOW','MODERATE','HIGH','SEVERE')),
+    weather_condition TEXT     CHECK (weather_condition IN ('Clear','Rainy','Foggy','Cloudy','Stormy')),
+    data_source       TEXT     CHECK (data_source IN ('Sensor','Manual','Camera','API')),
+    FOREIGN KEY (junction_id) REFERENCES Junction(junction_id) ON DELETE RESTRICT,
+    FOREIGN KEY (road_id)     REFERENCES Road(road_id)         ON DELETE RESTRICT
 );
 
--- SENSOR
-CREATE TABLE Sensor (
-    sensor_id         INTEGER PRIMARY KEY,
-    sensor_type       TEXT,
+-- ============================================================
+-- SENSOR  (Strong entity + 1:N with Junction, Rule 4)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS Sensor (
+    sensor_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    sensor_type       TEXT    CHECK (sensor_type IN ('Inductive Loop','Camera','Radar','CCTV','Microwave')),
     junction_id       INTEGER NOT NULL,
     installation_date DATE,
-    status            TEXT,
+    status            TEXT    CHECK (status IN ('Active','Inactive','Faulty')),
     last_reading_time DATETIME,
-    FOREIGN KEY (junction_id) REFERENCES Junction(junction_id)
+    FOREIGN KEY (junction_id) REFERENCES Junction(junction_id) ON DELETE RESTRICT
 );
+
+-- ============================================================
+-- EER SPECIALISATION TABLES (ISA hierarchy, one table per subtype)
+-- Supertype PK used as PK+FK in subtype (overlapping PKs)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS Vehicle_Car (
+    vehicle_id  INTEGER PRIMARY KEY,
+    num_doors   INTEGER DEFAULT 4,
+    fuel_type   TEXT    CHECK (fuel_type IN ('Petrol','Diesel','Electric','CNG','Hybrid')),
+    FOREIGN KEY (vehicle_id) REFERENCES Vehicle(vehicle_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Vehicle_Truck (
+    vehicle_id       INTEGER PRIMARY KEY,
+    max_load_tonnes  REAL,
+    FOREIGN KEY (vehicle_id) REFERENCES Vehicle(vehicle_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Vehicle_Motorcycle (
+    vehicle_id  INTEGER PRIMARY KEY,
+    engine_cc   INTEGER,
+    FOREIGN KEY (vehicle_id) REFERENCES Vehicle(vehicle_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Vehicle_Bus (
+    vehicle_id        INTEGER PRIMARY KEY,
+    seating_capacity  INTEGER,
+    FOREIGN KEY (vehicle_id) REFERENCES Vehicle(vehicle_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Incident_Accident (
+    incident_id    INTEGER PRIMARY KEY,
+    injuries_count INTEGER DEFAULT 0,
+    fatalities     INTEGER DEFAULT 0,
+    FOREIGN KEY (incident_id) REFERENCES Incident(incident_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Incident_Breakdown (
+    incident_id     INTEGER PRIMARY KEY,
+    breakdown_cause TEXT,
+    FOREIGN KEY (incident_id) REFERENCES Incident(incident_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Incident_Roadblock (
+    incident_id    INTEGER PRIMARY KEY,
+    authority_name TEXT,
+    FOREIGN KEY (incident_id) REFERENCES Incident(incident_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Incident_Flooding (
+    incident_id    INTEGER PRIMARY KEY,
+    water_level_cm REAL,
+    FOREIGN KEY (incident_id) REFERENCES Incident(incident_id) ON DELETE CASCADE
+);
+
+-- ============================================================
+-- INDEXES
+-- B+ Tree: range queries, JOINs, ORDER BY
+-- Hash-equivalent: UNIQUE constraints for exact-match lookups
+-- ============================================================
+
+-- B+ Tree: composite index for most common query (junction + time range)
+CREATE INDEX IF NOT EXISTS idx_obs_junction_time ON Traffic_Observation(junction_id, observation_time);
+
+-- B+ Tree: road-based observation queries
+CREATE INDEX IF NOT EXISTS idx_obs_road ON Traffic_Observation(road_id);
+
+-- B+ Tree: incident search by road
+CREATE INDEX IF NOT EXISTS idx_incident_road ON Incident(road_id);
+
+-- B+ Tree: incident search by junction
+CREATE INDEX IF NOT EXISTS idx_incident_junction ON Incident(junction_id);
+
+-- B+ Tree: incident date-range search
+CREATE INDEX IF NOT EXISTS idx_incident_datetime ON Incident(reported_datetime);
+
+-- B+ Tree: zone-based road queries
+CREATE INDEX IF NOT EXISTS idx_road_zone ON Road(zone_id);
+
+-- B+ Tree: zone-based junction queries
+CREATE INDEX IF NOT EXISTS idx_junction_zone ON Junction(zone_id);
+
+-- Hash-equivalent (UNIQUE): vehicle plate lookup — O(log n) in SQLite, O(1) conceptually
+-- Already enforced by UNIQUE constraint on license_plate
+-- Explicit index for clarity:
+CREATE INDEX IF NOT EXISTS idx_vehicle_plate ON Vehicle(license_plate);
+CREATE INDEX IF NOT EXISTS idx_driver_license ON Driver(license_no);
