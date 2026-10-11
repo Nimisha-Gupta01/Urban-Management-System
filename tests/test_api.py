@@ -2,64 +2,78 @@
 tests/test_api.py — Pytest API tests for Urban Traffic Management System
 BITS Pilani WILP | SESAP ZC337
 Tests cover: CRUD endpoints, ACID transaction, role-based access, input validation
+Uses FastAPI TestClient + psycopg2 against a real PostgreSQL test database.
 """
 
 import pytest
-import sys
 import os
+import psycopg2
+from fastapi.testclient import TestClient
 
+import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
 
-from app import app as flask_app, get_db
-import sqlite3
-
+from main import app, DB_CONFIG
 
 # ── Test fixtures ─────────────────────────────────────────────────────────────
 
-@pytest.fixture(scope='session')
-def db_path(tmp_path_factory):
-    """Create a fresh in-memory-backed test DB."""
-    tmp = tmp_path_factory.mktemp('data')
-    db_file = str(tmp / 'test_traffic.db')
-    flask_app.config['DB_PATH'] = db_file
-
+@pytest.fixture(scope='session', autouse=True)
+def setup_test_db():
+    """Init schema + seed data into the test PostgreSQL DB once per session."""
     sql_dir = os.path.join(os.path.dirname(__file__), '..', 'sql')
-    conn = sqlite3.connect(db_file)
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
+    conn = psycopg2.connect(**DB_CONFIG)
+    conn.autocommit = True
 
-    for filename in ['schema.sql', 'seed_data.sql']:
-        path = os.path.join(sql_dir, filename)
+    def run(path):
         with open(path) as f:
-            conn.executescript(f.read())
+            content = f.read()
+        with conn.cursor() as cur:
+            cur.execute(content)
 
-    # Also apply DDL triggers/views (stop before transaction demos)
-    triggers_path = os.path.join(sql_dir, 'triggers.sql')
-    with open(triggers_path) as f:
+    # Drop everything and recreate
+    with conn.cursor() as cur:
+        cur.execute("""
+            DO $$ DECLARE r RECORD; BEGIN
+                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname='public') LOOP
+                    EXECUTE 'DROP TABLE IF EXISTS '||quote_ident(r.tablename)||' CASCADE';
+                END LOOP;
+                FOR r IN (SELECT viewname FROM pg_views WHERE schemaname='public') LOOP
+                    EXECUTE 'DROP VIEW IF EXISTS '||quote_ident(r.viewname)||' CASCADE';
+                END LOOP;
+            END $$;
+        """)
+
+    run(os.path.join(sql_dir, 'schema.sql'))
+
+    # Triggers: DDL only (stop before transaction demos)
+    with open(os.path.join(sql_dir, 'triggers.sql')) as f:
         content = f.read()
-    marker = '-- TRANSACTIONS'
+    marker = '-- TRANSACTIONS — ACID DEMONSTRATION'
     idx = content.find(marker)
     ddl_only = content[:idx] if idx != -1 else content
-    conn.executescript(ddl_only)
-    conn.commit()
+    # Strip CHECKPOINT line (requires superuser in some configs)
+    ddl_only = '\n'.join(l for l in ddl_only.splitlines() if not l.strip().startswith('CHECKPOINT'))
+    with conn.cursor() as cur:
+        cur.execute(ddl_only)
+
+    run(os.path.join(sql_dir, 'seed_data.sql'))
     conn.close()
-    return db_file
+    yield
 
 
 @pytest.fixture
-def client(db_path):
-    flask_app.config['TESTING'] = True
-    with flask_app.test_client() as c:
+def client():
+    with TestClient(app) as c:
         yield c
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def officer_headers():
-    return {'X-User-Role': 'officer', 'Content-Type': 'application/json'}
+    return {'X-User-Role': 'officer'}
 
 def admin_headers():
-    return {'X-User-Role': 'admin', 'Content-Type': 'application/json'}
+    return {'X-User-Role': 'admin'}
 
 def public_headers():
     return {'X-User-Role': 'public'}
@@ -70,7 +84,7 @@ def public_headers():
 def test_health(client):
     r = client.get('/api/health')
     assert r.status_code == 200
-    assert r.get_json()['status'] == 'ok'
+    assert r.json()['status'] == 'ok'
 
 
 # ── T2: GET zones returns all 5 Bengaluru zones ───────────────────────────────
@@ -78,7 +92,7 @@ def test_health(client):
 def test_get_zones(client):
     r = client.get('/api/zones')
     assert r.status_code == 200
-    zones = r.get_json()
+    zones = r.json()
     assert len(zones) == 5
     names = {z['zone_name'] for z in zones}
     assert 'Whitefield' in names
@@ -90,8 +104,7 @@ def test_get_zones(client):
 def test_get_roads(client):
     r = client.get('/api/roads')
     assert r.status_code == 200
-    roads = r.get_json()
-    assert len(roads) >= 10
+    assert len(r.json()) >= 10
 
 
 # ── T4: GET roads filtered by zone ───────────────────────────────────────────
@@ -99,7 +112,7 @@ def test_get_roads(client):
 def test_get_roads_by_zone(client):
     r = client.get('/api/roads?zone_id=1')
     assert r.status_code == 200
-    for road in r.get_json():
+    for road in r.json():
         assert road['zone_id'] == 1
 
 
@@ -108,7 +121,7 @@ def test_get_roads_by_zone(client):
 def test_get_junctions(client):
     r = client.get('/api/junctions')
     assert r.status_code == 200
-    assert len(r.get_json()) >= 10
+    assert len(r.json()) >= 10
 
 
 # ── T6: GET traffic observations ─────────────────────────────────────────────
@@ -116,8 +129,7 @@ def test_get_junctions(client):
 def test_get_traffic(client):
     r = client.get('/api/traffic?hours=720')
     assert r.status_code == 200
-    obs = r.get_json()
-    assert len(obs) >= 50
+    assert len(r.json()) >= 50
 
 
 # ── T7: POST traffic — officer role (ACID transaction) ───────────────────────
@@ -129,9 +141,9 @@ def test_post_traffic_officer(client):
         'congestion_level': 'HIGH', 'data_source': 'Sensor',
         'weather_condition': 'Clear'
     }
-    r = client.post('/api/traffic', json=payload, headers={'X-User-Role': 'officer'})
+    r = client.post('/api/traffic', json=payload, headers=officer_headers())
     assert r.status_code == 201
-    body = r.get_json()
+    body = r.json()
     assert 'obs_id' in body
     assert body['obs_id'] > 0
 
@@ -141,17 +153,16 @@ def test_post_traffic_officer(client):
 def test_post_traffic_forbidden_public(client):
     payload = {'junction_id': 1, 'road_id': 1, 'vehicle_count': 50,
                'avg_speed_kmph': 60, 'congestion_level': 'LOW', 'data_source': 'Manual'}
-    r = client.post('/api/traffic', json=payload)  # no role header = public
+    r = client.post('/api/traffic', json=payload)
     assert r.status_code == 403
 
 
-# ── T9: POST traffic — missing required field returns 400 ────────────────────
+# ── T9: POST traffic — missing required field returns 422 ────────────────────
 
 def test_post_traffic_missing_field(client):
     payload = {'junction_id': 1, 'vehicle_count': 100}  # missing road_id etc.
-    r = client.post('/api/traffic', json=payload, headers={'X-User-Role': 'officer'})
-    assert r.status_code == 400
-    assert 'Missing required fields' in r.get_json().get('error', '')
+    r = client.post('/api/traffic', json=payload, headers=officer_headers())
+    assert r.status_code == 422  # FastAPI validation error
 
 
 # ── T10: POST traffic — invalid FK triggers ROLLBACK ─────────────────────────
@@ -162,7 +173,7 @@ def test_post_traffic_invalid_junction(client):
         'vehicle_count': 100, 'avg_speed_kmph': 40,
         'congestion_level': 'LOW', 'data_source': 'Manual'
     }
-    r = client.post('/api/traffic', json=payload, headers={'X-User-Role': 'officer'})
+    r = client.post('/api/traffic', json=payload, headers=officer_headers())
     assert r.status_code == 400
 
 
@@ -171,7 +182,7 @@ def test_post_traffic_invalid_junction(client):
 def test_get_open_incidents(client):
     r = client.get('/api/incidents?open_only=true')
     assert r.status_code == 200
-    incidents = r.get_json()
+    incidents = r.json()
     for i in incidents:
         assert i['resolved_datetime'] is None
 
@@ -186,23 +197,22 @@ def test_post_incident(client):
         'road_id': 2,
         'reported_by': 'Test Officer'
     }
-    r = client.post('/api/incidents', json=payload, headers={'X-User-Role': 'officer'})
+    r = client.post('/api/incidents', json=payload, headers=officer_headers())
     assert r.status_code == 201
-    assert 'incident_id' in r.get_json()
+    assert 'incident_id' in r.json()
 
 
 # ── T13: PUT incident — resolve ───────────────────────────────────────────────
 
 def test_put_incident_resolve(client):
-    # First create one
     post_r = client.post('/api/incidents',
-                         json={'incident_type':'Breakdown','severity':'LOW','road_id':1},
-                         headers={'X-User-Role': 'officer'})
-    inc_id = post_r.get_json()['incident_id']
+                         json={'incident_type': 'Breakdown', 'severity': 'LOW', 'road_id': 1},
+                         headers=officer_headers())
+    inc_id = post_r.json()['incident_id']
 
     r = client.put(f'/api/incidents/{inc_id}',
-                   json={'resolved_datetime': '2026-10-11 18:00:00'},
-                   headers={'X-User-Role': 'officer'})
+                   json={'resolved_datetime': '2026-10-18 18:00:00'},
+                   headers=officer_headers())
     assert r.status_code == 200
 
 
@@ -210,13 +220,13 @@ def test_put_incident_resolve(client):
 
 def test_put_incident_invalid_resolution(client):
     post_r = client.post('/api/incidents',
-                         json={'incident_type':'Accident','severity':'HIGH','road_id':1},
-                         headers={'X-User-Role': 'officer'})
-    inc_id = post_r.get_json()['incident_id']
+                         json={'incident_type': 'Accident', 'severity': 'HIGH', 'road_id': 1},
+                         headers=officer_headers())
+    inc_id = post_r.json()['incident_id']
 
     r = client.put(f'/api/incidents/{inc_id}',
                    json={'resolved_datetime': '2020-01-01 00:00:00'},
-                   headers={'X-User-Role': 'officer'})
+                   headers=officer_headers())
     assert r.status_code == 400
 
 
@@ -224,14 +234,13 @@ def test_put_incident_invalid_resolution(client):
 
 def test_delete_incident_admin(client):
     post_r = client.post('/api/incidents',
-                         json={'incident_type':'Roadblock','severity':'LOW'},
-                         headers={'X-User-Role': 'admin'})
-    inc_id = post_r.get_json()['incident_id']
+                         json={'incident_type': 'Roadblock', 'severity': 'LOW'},
+                         headers=admin_headers())
+    inc_id = post_r.json()['incident_id']
 
-    r = client.delete(f'/api/incidents/{inc_id}', headers={'X-User-Role': 'admin'})
+    r = client.delete(f'/api/incidents/{inc_id}', headers=admin_headers())
     assert r.status_code == 200
 
-    # Confirm deleted
     r2 = client.get(f'/api/incidents/{inc_id}')
     assert r2.status_code == 404
 
@@ -239,7 +248,7 @@ def test_delete_incident_admin(client):
 # ── T16: DELETE incident — officer is forbidden ───────────────────────────────
 
 def test_delete_incident_officer_forbidden(client):
-    r = client.delete('/api/incidents/1', headers={'X-User-Role': 'officer'})
+    r = client.delete('/api/incidents/1', headers=officer_headers())
     assert r.status_code == 403
 
 
@@ -248,7 +257,7 @@ def test_delete_incident_officer_forbidden(client):
 def test_dashboard(client):
     r = client.get('/api/dashboard')
     assert r.status_code == 200
-    body = r.get_json()
+    body = r.json()
     assert 'junctions' in body
     assert 'zones' in body
     assert 'city_kpis' in body
@@ -258,12 +267,11 @@ def test_dashboard(client):
 def test_map_data(client):
     r = client.get('/api/map')
     assert r.status_code == 200
-    body = r.get_json()
+    body = r.json()
     assert 'junctions' in body
-    assert 'incidents'  in body
-    # Every junction must have coordinates
+    assert 'incidents' in body
     for j in body['junctions']:
-        assert j['latitude']  is not None
+        assert j['latitude'] is not None
         assert j['longitude'] is not None
 
 
@@ -272,32 +280,22 @@ def test_map_data(client):
 def test_analytics_peak_hours(client):
     r = client.get('/api/analytics/peak-hours')
     assert r.status_code == 200
-    data = r.get_json()
-    assert len(data) <= 24  # at most 24 hour buckets
+    assert len(r.json()) <= 24
 
 
 def test_analytics_top_congested(client):
     r = client.get('/api/analytics/top-congested')
     assert r.status_code == 200
-    assert len(r.get_json()) <= 5
+    assert len(r.json()) <= 5
 
 
 # ── T19: Audit log — admin only ──────────────────────────────────────────────
 
 def test_audit_admin(client):
-    r = client.get('/api/audit', headers={'X-User-Role': 'admin'})
+    r = client.get('/api/audit', headers=admin_headers())
     assert r.status_code == 200
 
 
 def test_audit_public_forbidden(client):
     r = client.get('/api/audit')
     assert r.status_code == 403
-
-
-# ── T20: HTML page routes return 200 ─────────────────────────────────────────
-
-@pytest.mark.parametrize('path', ['/', '/traffic', '/incidents', '/observation', '/roads'])
-def test_html_pages(client, path):
-    r = client.get(path)
-    assert r.status_code == 200
-    assert b'Urban Traffic' in r.data

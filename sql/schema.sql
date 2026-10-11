@@ -1,20 +1,17 @@
 -- ============================================================
 -- Urban Road & Real-Time Traffic Management System
 -- BITS Pilani WILP | SESAP ZC337
--- schema.sql — Complete DDL: Tables, Indexes, Constraints
+-- schema.sql — PostgreSQL DDL: Tables, Indexes, Constraints
 -- DBSA Concepts Covered: Three-schema architecture (internal),
 --   ER-to-Relational mapping (all 7 rules), BCNF normalization,
 --   B+ Tree indexing, Hash indexing, Data integrity constraints
 -- ============================================================
 
-PRAGMA foreign_keys = ON;
-PRAGMA journal_mode = WAL;  -- Write-Ahead Log for recovery demonstration
-
 -- ============================================================
 -- ZONE  (Strong entity, Rule 1)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS Zone (
-    zone_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    zone_id    SERIAL PRIMARY KEY,
     zone_name  TEXT    NOT NULL,
     city       TEXT    NOT NULL DEFAULT 'Bengaluru',
     area_sqkm  REAL    CHECK (area_sqkm > 0),
@@ -25,7 +22,7 @@ CREATE TABLE IF NOT EXISTS Zone (
 -- ROAD  (Strong entity, Rule 1 + 1:N with Zone, Rule 4)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS Road (
-    road_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    road_id        SERIAL PRIMARY KEY,
     road_name      TEXT    NOT NULL,
     road_type      TEXT    CHECK (road_type IN ('National Highway','State Highway','City Road','Ring Road','Lane','Flyover')),
     length_km      REAL    CHECK (length_km > 0),
@@ -41,7 +38,7 @@ CREATE TABLE IF NOT EXISTS Road (
 -- JUNCTION  (Strong entity, Rule 1 + 1:N with Zone, Rule 4)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS Junction (
-    junction_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    junction_id      SERIAL PRIMARY KEY,
     junction_name    TEXT    NOT NULL,
     junction_type    TEXT    CHECK (junction_type IN ('Signalised','Unsignalised','Roundabout','Flyover','Underpass')),
     latitude         REAL    CHECK (latitude  BETWEEN 12.7 AND 13.2),
@@ -68,7 +65,7 @@ CREATE TABLE IF NOT EXISTS Road_Junction (
 -- TRAFFIC_SIGNAL  (Strong entity + 1:N with Junction, Rule 4)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS Traffic_Signal (
-    signal_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    signal_id          SERIAL PRIMARY KEY,
     junction_id        INTEGER NOT NULL,
     signal_type        TEXT    CHECK (signal_type IN ('Standard','Adaptive','Pedestrian','Emergency')),
     installed_date     DATE,
@@ -81,7 +78,7 @@ CREATE TABLE IF NOT EXISTS Traffic_Signal (
 -- DRIVER  (Strong entity, Rule 1)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS Driver (
-    driver_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+    driver_id  SERIAL PRIMARY KEY,
     name       TEXT    NOT NULL,
     license_no TEXT    UNIQUE NOT NULL,
     dob        DATE,
@@ -94,7 +91,7 @@ CREATE TABLE IF NOT EXISTS Driver (
 -- Hash-equivalent index on license_plate for O(1) exact lookup
 -- ============================================================
 CREATE TABLE IF NOT EXISTS Vehicle (
-    vehicle_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id       SERIAL PRIMARY KEY,
     license_plate    TEXT    UNIQUE NOT NULL,
     vehicle_type     TEXT    CHECK (vehicle_type IN ('Car','Truck','Motorcycle','Bus','Auto','Other')),
     make             TEXT,
@@ -110,12 +107,12 @@ CREATE TABLE IF NOT EXISTS Vehicle (
 -- Nullable FKs model partial participation in relationships
 -- ============================================================
 CREATE TABLE IF NOT EXISTS Incident (
-    incident_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident_id       SERIAL PRIMARY KEY,
     incident_type     TEXT    NOT NULL CHECK (incident_type IN ('Accident','Breakdown','Roadblock','Flooding')),
     severity          TEXT    CHECK (severity IN ('LOW','MEDIUM','HIGH','CRITICAL')),
     description       TEXT,
-    reported_datetime DATETIME NOT NULL DEFAULT (datetime('now')),
-    resolved_datetime DATETIME,
+    reported_datetime TIMESTAMP NOT NULL DEFAULT NOW(),
+    resolved_datetime TIMESTAMP,
     road_id           INTEGER,
     junction_id       INTEGER,
     vehicle_id        INTEGER,
@@ -130,10 +127,10 @@ CREATE TABLE IF NOT EXISTS Incident (
 -- Core table demonstrating normalization (see SRS Section 4.3)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS Traffic_Observation (
-    obs_id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    obs_id            SERIAL PRIMARY KEY,
     junction_id       INTEGER NOT NULL,
     road_id           INTEGER NOT NULL,
-    observation_time  DATETIME NOT NULL DEFAULT (datetime('now')),
+    observation_time  TIMESTAMP NOT NULL DEFAULT NOW(),
     vehicle_count     INTEGER  CHECK (vehicle_count >= 0),
     avg_speed_kmph    REAL     CHECK (avg_speed_kmph >= 0),
     congestion_level  TEXT     CHECK (congestion_level IN ('LOW','MODERATE','HIGH','SEVERE')),
@@ -147,12 +144,12 @@ CREATE TABLE IF NOT EXISTS Traffic_Observation (
 -- SENSOR  (Strong entity + 1:N with Junction, Rule 4)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS Sensor (
-    sensor_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    sensor_id         SERIAL PRIMARY KEY,
     sensor_type       TEXT    CHECK (sensor_type IN ('Inductive Loop','Camera','Radar','CCTV','Microwave')),
     junction_id       INTEGER NOT NULL,
     installation_date DATE,
     status            TEXT    CHECK (status IN ('Active','Inactive','Faulty')),
-    last_reading_time DATETIME,
+    last_reading_time TIMESTAMP,
     FOREIGN KEY (junction_id) REFERENCES Junction(junction_id) ON DELETE RESTRICT
 );
 
@@ -212,6 +209,19 @@ CREATE TABLE IF NOT EXISTS Incident_Flooding (
 );
 
 -- ============================================================
+-- AUDIT LOG TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS Incident_Audit (
+    audit_id       SERIAL PRIMARY KEY,
+    incident_id    INTEGER,
+    action         TEXT,
+    old_severity   TEXT,
+    new_severity   TEXT,
+    changed_at     TIMESTAMP DEFAULT NOW(),
+    changed_by     TEXT
+);
+
+-- ============================================================
 -- INDEXES
 -- B+ Tree: range queries, JOINs, ORDER BY
 -- Hash-equivalent: UNIQUE constraints for exact-match lookups
@@ -238,8 +248,39 @@ CREATE INDEX IF NOT EXISTS idx_road_zone ON Road(zone_id);
 -- B+ Tree: zone-based junction queries
 CREATE INDEX IF NOT EXISTS idx_junction_zone ON Junction(zone_id);
 
--- Hash-equivalent (UNIQUE): vehicle plate lookup — O(log n) in SQLite, O(1) conceptually
--- Already enforced by UNIQUE constraint on license_plate
--- Explicit index for clarity:
+-- Hash-equivalent (UNIQUE): vehicle plate lookup — O(log n) in PostgreSQL, O(1) conceptually
 CREATE INDEX IF NOT EXISTS idx_vehicle_plate ON Vehicle(license_plate);
 CREATE INDEX IF NOT EXISTS idx_driver_license ON Driver(license_no);
+
+-- ============================================================
+-- ROLE-BASED ACCESS CONTROL
+-- PostgreSQL native GRANT/REVOKE (replaces header simulation)
+-- ============================================================
+
+-- Create roles (ignore error if already exists)
+DO $$ BEGIN
+    CREATE ROLE admin_role;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+    CREATE ROLE officer_role;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+    CREATE ROLE public_role;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- admin_role: full access
+GRANT ALL ON ALL TABLES IN SCHEMA public TO admin_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO admin_role;
+
+-- officer_role: read all + write observations + write/update incidents (no delete)
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO officer_role;
+GRANT INSERT, UPDATE ON Traffic_Observation TO officer_role;
+GRANT INSERT, UPDATE ON Incident TO officer_role;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO officer_role;
+
+-- public_role: read-only on non-PII views
+GRANT SELECT ON Zone, Road, Junction, Traffic_Observation TO public_role;
+REVOKE SELECT ON Vehicle FROM public_role;
+REVOKE SELECT ON Driver FROM public_role;

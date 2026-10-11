@@ -8,8 +8,30 @@ on:
 
 jobs:
   test:
-    name: Lint + Schema + API Tests
+    name: Schema + API Tests
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB:       traffic_db
+          POSTGRES_USER:     traffic_user
+          POSTGRES_PASSWORD: traffic_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST:     localhost
+      PGPORT:     "5432"
+      PGDATABASE: traffic_db
+      PGUSER:     traffic_user
+      PGPASSWORD: traffic_pass
 
     steps:
       - name: Checkout code
@@ -24,32 +46,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
-
-      - name: Validate SQL schema syntax
-        run: |
-          python3 -c "
-          import sqlite3, os
-          db = sqlite3.connect(':memory:')
-          db.execute('PRAGMA foreign_keys = ON')
-          db.execute('PRAGMA journal_mode = WAL')
-          for f in ['sql/schema.sql']:
-              with open(f) as fh:
-                  db.executescript(fh.read())
-          print('Schema SQL: OK')
-          "
 
       - name: Initialise database
         run: python init_db.py --reset
 
-      - name: Run API tests
-        run: pytest tests/ -v
-
       - name: Verify DB record counts
         run: |
           python3 -c "
-          import sqlite3
-          db = sqlite3.connect('data/traffic.db')
+          import psycopg2, os
+          conn = psycopg2.connect(
+              host=os.getenv('PGHOST','localhost'),
+              dbname=os.getenv('PGDATABASE','traffic_db'),
+              user=os.getenv('PGUSER','traffic_user'),
+              password=os.getenv('PGPASSWORD','traffic_pass'),
+          )
           checks = [
               ('Zone',               5),
               ('Road',              20),
@@ -60,18 +70,24 @@ jobs:
               ('Vehicle',           25),
           ]
           all_ok = True
+          cur = conn.cursor()
           for table, expected in checks:
-              count = db.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0]
+              cur.execute(f'SELECT COUNT(*) FROM {table}')
+              count = cur.fetchone()[0]
               ok = count >= expected
-              status = 'OK' if ok else 'FAIL'
-              print(f'  {status}  {table}: {count} rows (expected >= {expected})')
+              status = 'OK  ' if ok else 'FAIL'
+              print(f'  {status} {table}: {count} rows (expected >= {expected})')
               if not ok: all_ok = False
+          conn.close()
           if not all_ok: raise SystemExit('Record count check failed')
           print('All record count checks passed.')
           "
 
+      - name: Run API tests
+        run: pytest tests/ -v
+
   docker:
-    name: Docker Build
+    name: Docker Build + Smoke Test
     runs-on: ubuntu-latest
     needs: test
 
@@ -81,9 +97,9 @@ jobs:
       - name: Build Docker image
         run: docker build -t utms:ci .
 
-      - name: Smoke-test container
+      - name: Start stack and smoke test
         run: |
-          docker run -d --name utms-test -p 5000:5000 utms:ci
-          sleep 5
-          curl -sf http://localhost:5000/api/health || (docker logs utms-test && exit 1)
-          docker stop utms-test
+          docker compose up -d
+          sleep 20
+          curl -sf http://localhost:8000/api/health || (docker compose logs && exit 1)
+          docker compose down

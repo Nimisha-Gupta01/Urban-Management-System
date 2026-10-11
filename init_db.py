@@ -1,99 +1,123 @@
 """
-init_db.py — Initialize the SQLite database
-Runs schema.sql, triggers.sql, then seed_data.sql in order.
+init_db.py — Initialize the PostgreSQL database
+Runs schema.sql, triggers.sql (DDL only), then seed_data.sql in order.
 Usage:  python init_db.py
-        python init_db.py --reset   (drops existing DB first)
+        python init_db.py --reset   (drops and recreates all tables)
 """
 
-import sqlite3
+import psycopg2
 import os
 import sys
 import argparse
+import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH  = os.path.join(BASE_DIR, 'data', 'traffic.db')
 SQL_DIR  = os.path.join(BASE_DIR, 'sql')
 
-SQL_FILES = [
-    ('schema.sql',    'DDL: tables, indexes, constraints'),
-    ('triggers_ddl.sql', 'Views, triggers (DDL only — no transaction demos)'),
-    ('seed_data.sql', 'Sample data (Bengaluru roads/junctions/incidents)'),
-]
+DB_CONFIG = {
+    "host":     os.getenv("PGHOST",     "localhost"),
+    "port":     int(os.getenv("PGPORT", "5432")),
+    "dbname":   os.getenv("PGDATABASE", "traffic_db"),
+    "user":     os.getenv("PGUSER",     "traffic_user"),
+    "password": os.getenv("PGPASSWORD", "traffic_pass"),
+}
 
-# triggers.sql contains both DDL (CREATE VIEW / TRIGGER) and DML transaction demos.
-# We extract only the DDL portion up to the TRANSACTIONS section for init,
-# then apply the transaction demos after seed data is loaded.
 TRANSACTION_DEMO_MARKER = '-- TRANSACTIONS — ACID DEMONSTRATION'
 
 
-def extract_triggers_ddl(src_path, dst_path):
-    """Write triggers_ddl.sql containing only DDL (views + triggers), not the demo transactions."""
+def wait_for_postgres(retries=15, delay=3):
+    for attempt in range(1, retries + 1):
+        try:
+            conn = psycopg2.connect(**DB_CONFIG)
+            conn.close()
+            print("PostgreSQL is ready.")
+            return
+        except psycopg2.OperationalError:
+            print(f"  Waiting for PostgreSQL... ({attempt}/{retries})")
+            time.sleep(delay)
+    print("Could not connect to PostgreSQL. Exiting.")
+    sys.exit(1)
+
+
+def extract_triggers_ddl(src_path):
+    """Return only the DDL portion of triggers.sql (views + triggers, no transaction demos)."""
     with open(src_path, 'r') as f:
         content = f.read()
-    # Keep everything before the TRANSACTIONS section
     marker_pos = content.find(TRANSACTION_DEMO_MARKER)
     if marker_pos == -1:
-        ddl = content
-    else:
-        # Back-track past the comment-block separator line
-        section_start = content.rfind('-- =====', 0, marker_pos)
-        ddl = content[:section_start] if section_start != -1 else content[:marker_pos]
-    with open(dst_path, 'w') as f:
-        f.write(ddl)
+        return content
+    section_start = content.rfind('-- =====', 0, marker_pos)
+    return content[:section_start] if section_start != -1 else content[:marker_pos]
 
 
-def run_sql_file(conn, filepath, label):
+def run_sql(conn, sql, label):
     print(f"  → {label} ... ", end='', flush=True)
-    with open(filepath, 'r') as f:
-        sql = f.read()
-    # Execute statement-by-statement to surface individual errors
-    conn.executescript(sql)
+    with conn.cursor() as cur:
+        cur.execute(sql)
+    conn.commit()
     print("OK")
 
 
+def drop_all_tables(conn):
+    drop_sql = """
+    DO $$ DECLARE
+        r RECORD;
+    BEGIN
+        FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+            EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+        END LOOP;
+        FOR r IN (SELECT viewname FROM pg_views WHERE schemaname = 'public') LOOP
+            EXECUTE 'DROP VIEW IF EXISTS ' || quote_ident(r.viewname) || ' CASCADE';
+        END LOOP;
+    END $$;
+    """
+    with conn.cursor() as cur:
+        cur.execute(drop_sql)
+    conn.commit()
+    print("Dropped all existing tables and views.")
+
+
 def init(reset=False):
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    wait_for_postgres()
 
-    if reset and os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
-        print(f"Removed existing database: {DB_PATH}")
+    conn = psycopg2.connect(**DB_CONFIG)
+    conn.autocommit = False
 
-    print(f"Initialising database: {DB_PATH}\n")
+    try:
+        if reset:
+            drop_all_tables(conn)
 
-    # Pre-process triggers.sql → triggers_ddl.sql (views + triggers only)
-    triggers_src = os.path.join(SQL_DIR, 'triggers.sql')
-    triggers_ddl = os.path.join(SQL_DIR, 'triggers_ddl.sql')
-    extract_triggers_ddl(triggers_src, triggers_ddl)
+        print(f"\nInitialising database: {DB_CONFIG['dbname']}\n")
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
+        # 1. Schema (tables, indexes, constraints, roles)
+        schema_path = os.path.join(SQL_DIR, 'schema.sql')
+        with open(schema_path) as f:
+            run_sql(conn, f.read(), "DDL: tables, indexes, constraints, roles")
 
-    for filename, label in SQL_FILES:
-        path = os.path.join(SQL_DIR, filename)
-        if not os.path.exists(path):
-            print(f"  ✗  File not found: {path}")
-            sys.exit(1)
-        try:
-            run_sql_file(conn, path, label)
-        except sqlite3.Error as e:
-            print(f"FAILED\n  Error in {filename}: {e}")
-            conn.close()
-            sys.exit(1)
+        # 2. Triggers and views (DDL only — strip transaction demo blocks)
+        triggers_path = os.path.join(SQL_DIR, 'triggers.sql')
+        triggers_ddl = extract_triggers_ddl(triggers_path)
+        run_sql(conn, triggers_ddl, "Views, trigger functions, triggers")
 
-    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    conn.close()
+        # 3. Seed data
+        seed_path = os.path.join(SQL_DIR, 'seed_data.sql')
+        with open(seed_path) as f:
+            run_sql(conn, f.read(), "Sample data (Bengaluru roads/junctions/incidents)")
 
-    # Clean up temp file
-    if os.path.exists(triggers_ddl):
-        os.remove(triggers_ddl)
+        print(f"\nDatabase ready: {DB_CONFIG['dbname']} on {DB_CONFIG['host']}:{DB_CONFIG['port']}")
 
-    print(f"\nDatabase ready at: {DB_PATH}")
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"\nFAILED: {e}")
+        conn.close()
+        sys.exit(1)
+    finally:
+        conn.close()
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Initialise traffic.db')
+    parser = argparse.ArgumentParser(description='Initialise PostgreSQL traffic_db')
     parser.add_argument('--reset', action='store_true',
-                        help='Delete existing DB and recreate from scratch')
+                        help='Drop all tables and recreate from scratch')
     args = parser.parse_args()
     init(reset=args.reset)
