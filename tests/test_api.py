@@ -255,6 +255,18 @@ def test_dashboard(client):
     assert 'incident_summary' in body
 
 
+def test_map_data(client):
+    r = client.get('/api/map')
+    assert r.status_code == 200
+    body = r.get_json()
+    assert 'junctions' in body
+    assert 'incidents'  in body
+    # Every junction must have coordinates
+    for j in body['junctions']:
+        assert j['latitude']  is not None
+        assert j['longitude'] is not None
+
+
 # ── T18: Analytics endpoints ──────────────────────────────────────────────────
 
 def test_analytics_peak_hours(client):

@@ -5,6 +5,71 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard — Urban Traffic Management System</title>
   <link rel="stylesheet" href="/static/css/style.css">
+  <!-- Leaflet.js — offline-capable, no API key needed -->
+  <link  rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    /* ── Map layout ─────────────────────────────────────────────── */
+    #map-section {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 16px;
+      margin-bottom: 20px;
+      align-items: start;
+    }
+    #map {
+      height: 480px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 8px rgba(0,0,0,.1);
+    }
+    #map-legend {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 13px;
+    }
+    #map-legend h3 { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--primary); }
+    .legend-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .legend-dot {
+      width: 14px; height: 14px; border-radius: 50%;
+      flex-shrink: 0; border: 2px solid rgba(0,0,0,.2);
+    }
+    .dot-severe   { background: #c0392b; }
+    .dot-high     { background: #e67e22; }
+    .dot-moderate { background: #f1c40f; }
+    .dot-low      { background: #27ae60; }
+    .dot-none     { background: #95a5a6; }
+    .legend-incident { background: #8e44ad; border-radius: 2px; width:14px; height:14px; }
+
+    #map-info-panel {
+      background: #f8f9fc;
+      border-top: 1px solid var(--border);
+      padding: 12px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      border-radius: 0 0 8px 8px;
+      margin-top: -8px;
+    }
+    .junction-list { max-height: 280px; overflow-y: auto; margin-top: 12px; }
+    .junction-item {
+      padding: 7px 0;
+      border-bottom: 1px solid #f0f2f5;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .junction-item:hover { color: var(--primary); }
+    .junction-item:last-child { border-bottom: none; }
+
+    @media (max-width: 768px) {
+      #map-section { grid-template-columns: 1fr; }
+      #map { height: 320px; }
+    }
+  </style>
 </head>
 <body>
 
@@ -24,39 +89,73 @@
 
 <div class="page">
   <h1>Real-Time Traffic Dashboard</h1>
-  <p class="subtitle">Bengaluru — Live city-wide congestion overview &nbsp;·&nbsp; Auto-refreshes every 60 s</p>
+  <p class="subtitle">Bengaluru — Live city-wide congestion overview &nbsp;·&nbsp;
+    <span id="lastRefresh">—</span> &nbsp;·&nbsp;
+    <button onclick="refresh()" style="background:none;border:none;color:var(--primary);cursor:pointer;font-size:13px;text-decoration:underline">Refresh now</button>
+  </p>
 
-  <!-- KPI cards -->
-  <div class="kpi-grid" id="kpiGrid">
-    <div class="kpi-card blue"><span class="label">Observations (24 h)</span><span class="value" id="kpiObs">—</span></div>
+  <!-- KPI strip -->
+  <div class="kpi-grid" style="margin-bottom:16px">
+    <div class="kpi-card blue" ><span class="label">Observations (24 h)</span><span class="value" id="kpiObs">—</span></div>
     <div class="kpi-card amber"><span class="label">High Congestion Events</span><span class="value" id="kpiHigh">—</span></div>
     <div class="kpi-card green"><span class="label">City Avg Speed (km/h)</span><span class="value" id="kpiSpeed">—</span></div>
-    <div class="kpi-card red"><span class="label">Open Incidents</span><span class="value" id="kpiInc">—</span></div>
+    <div class="kpi-card red"  ><span class="label">Open Incidents</span><span class="value" id="kpiInc">—</span></div>
   </div>
 
-  <!-- Incident severity breakdown -->
-  <div class="card" id="incSummaryCard">
+  <!-- ── MAP + SIDEBAR ─────────────────────────────────────────── -->
+  <div id="map-section">
+
+    <!-- Left: map -->
+    <div>
+      <div id="map"></div>
+      <div id="map-info-panel">
+        Click any junction pin for details &nbsp;·&nbsp; Purple diamonds = open incidents
+      </div>
+    </div>
+
+    <!-- Right: legend + junction quick-list -->
+    <div id="map-legend">
+      <h3>Map Legend</h3>
+
+      <p style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px">Junction Congestion</p>
+      <div class="legend-row"><div class="legend-dot dot-severe"></div><span>SEVERE — &lt;15 km/h</span></div>
+      <div class="legend-row"><div class="legend-dot dot-high"></div><span>HIGH — 15–30 km/h</span></div>
+      <div class="legend-row"><div class="legend-dot dot-moderate"></div><span>MODERATE — 30–50 km/h</span></div>
+      <div class="legend-row"><div class="legend-dot dot-low"></div><span>LOW / Normal flow</span></div>
+      <div class="legend-row"><div class="legend-dot dot-none"></div><span>No recent data</span></div>
+
+      <hr style="margin:12px 0;border:none;border-top:1px solid var(--border)">
+
+      <p style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px">Incidents</p>
+      <div class="legend-row"><div class="legend-incident"></div><span>Open incident (click for details)</span></div>
+
+      <hr style="margin:12px 0;border:none;border-top:1px solid var(--border)">
+
+      <p style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px">Jump to Junction</p>
+      <div class="junction-list" id="junctionList">
+        <span class="text-muted">Loading…</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Incident severity strip ───────────────────────────────── -->
+  <div class="card" style="margin-bottom:16px">
     <div class="card-header">Open Incidents by Severity</div>
-    <div class="card-body" style="padding:14px 16px; display:flex; gap:16px; flex-wrap:wrap;" id="incSummaryBody">
+    <div class="card-body" style="padding:14px 16px;display:flex;gap:20px;flex-wrap:wrap;align-items:center" id="incSummaryBody">
       <span class="text-muted">Loading…</span>
     </div>
   </div>
 
-  <!-- Junction status table -->
+  <!-- ── Junction table ─────────────────────────────────────────── -->
   <div class="card">
     <div class="card-header">Junction Status — Most Recent Observation</div>
     <div class="card-body">
       <table>
         <thead>
           <tr>
-            <th>Junction</th>
-            <th>Zone</th>
-            <th>Last Seen</th>
-            <th>Vehicles</th>
-            <th>Avg Speed</th>
-            <th>Congestion</th>
-            <th>Weather</th>
-            <th>Signal</th>
+            <th>Junction</th><th>Zone</th><th>Last Seen</th>
+            <th>Vehicles</th><th>Avg Speed</th><th>Congestion</th>
+            <th>Weather</th><th>Signal</th>
           </tr>
         </thead>
         <tbody id="junctionBody"><tr><td colspan="8" class="empty-msg">Loading…</td></tr></tbody>
@@ -64,21 +163,15 @@
     </div>
   </div>
 
-  <!-- Zone summary table -->
+  <!-- ── Zone summary ───────────────────────────────────────────── -->
   <div class="card">
     <div class="card-header">Zone Summary (Last 24 h)</div>
     <div class="card-body">
       <table>
         <thead>
           <tr>
-            <th>Zone</th>
-            <th>Type</th>
-            <th>Junctions</th>
-            <th>Roads</th>
-            <th>Observations</th>
-            <th>Avg Vehicles</th>
-            <th>Avg Speed</th>
-            <th>Open Incidents</th>
+            <th>Zone</th><th>Type</th><th>Junctions</th><th>Roads</th>
+            <th>Observations</th><th>Avg Vehicles</th><th>Avg Speed</th><th>Open Incidents</th>
           </tr>
         </thead>
         <tbody id="zoneBody"><tr><td colspan="8" class="empty-msg">Loading…</td></tr></tbody>
@@ -90,32 +183,162 @@
 <div id="toast"></div>
 <script src="/static/js/app.js"></script>
 <script>
+// ── Leaflet map setup ──────────────────────────────────────────────────────
+const BENGALURU_CENTER = [12.9716, 77.5946];
+const map = L.map('map', { zoomControl: true }).setView(BENGALURU_CENTER, 12);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxZoom: 18
+}).addTo(map);
+
+// Colour scheme matching the legend
+const CONGESTION_COLOR = {
+  'SEVERE':   '#c0392b',
+  'HIGH':     '#e67e22',
+  'MODERATE': '#f1c40f',
+  'LOW':      '#27ae60',
+  'NORMAL':   '#27ae60',
+  null:       '#95a5a6'
+};
+
+// Store markers so we can update them on refresh without full redraw
+let junctionMarkers = {};   // junction_id → L.circleMarker
+let incidentMarkers = [];   // array of L.marker
+
+function makeJunctionMarker(r) {
+  const color  = CONGESTION_COLOR[r.congestion_level] || CONGESTION_COLOR[null];
+  const radius = r.vehicle_count ? Math.max(8, Math.min(22, r.vehicle_count / 20)) : 9;
+
+  const popup = `
+    <div style="min-width:200px;font-family:Segoe UI,sans-serif">
+      <strong style="font-size:14px">${r.junction_name}</strong><br>
+      <span style="color:#666;font-size:12px">${r.zone_name} · ${r.junction_type || '—'}</span>
+      <hr style="margin:6px 0">
+      ${r.congestion_level
+        ? `<div style="margin:3px 0"><b>Congestion:</b> <span style="color:${color};font-weight:700">${r.congestion_level}</span></div>
+           <div style="margin:3px 0"><b>Vehicles:</b> ${r.vehicle_count}</div>
+           <div style="margin:3px 0"><b>Avg Speed:</b> ${r.avg_speed_kmph} km/h</div>
+           <div style="margin:3px 0"><b>Weather:</b> ${r.weather_condition || '—'}</div>
+           <div style="color:#999;font-size:11px;margin-top:6px">Last observed: ${r.observation_time ? r.observation_time.slice(0,16) : '—'}</div>`
+        : `<span style="color:#999">No recent observation data</span>`}
+      ${r.signal_status ? `<div style="margin-top:4px"><b>Signal:</b> ${r.signal_status}</div>` : ''}
+    </div>`;
+
+  return L.circleMarker([r.latitude, r.longitude], {
+    radius,
+    fillColor:   color,
+    color:       '#fff',
+    weight:      2,
+    opacity:     1,
+    fillOpacity: 0.88
+  }).bindPopup(popup);
+}
+
+function makeIncidentMarker(r) {
+  const severityColor = { CRITICAL:'#c0392b', HIGH:'#e67e22', MEDIUM:'#f39c12', LOW:'#8e44ad' };
+  const color = severityColor[r.severity] || '#8e44ad';
+
+  // Diamond-shaped icon for incidents
+  const icon = L.divIcon({
+    html: `<div style="
+      width:16px;height:16px;
+      background:${color};
+      transform:rotate(45deg);
+      border:2px solid #fff;
+      box-shadow:0 2px 6px rgba(0,0,0,.4)
+    "></div>`,
+    className: '',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8]
+  });
+
+  const popup = `
+    <div style="min-width:180px;font-family:Segoe UI,sans-serif">
+      <strong style="color:${color}">${r.incident_type} — ${r.severity}</strong><br>
+      <span style="font-size:12px;color:#666">${r.junction_name || r.road_name || '—'}</span>
+      <hr style="margin:6px 0">
+      <div style="font-size:12px">${r.description || 'No description'}</div>
+      <div style="color:#999;font-size:11px;margin-top:6px">Reported: ${r.reported_datetime ? r.reported_datetime.slice(0,16) : '—'}</div>
+    </div>`;
+
+  return L.marker([r.latitude, r.longitude], { icon }).bindPopup(popup);
+}
+
+// ── Load / update map data ────────────────────────────────────────────────
+async function loadMap() {
+  const { ok, data } = await apiFetch('/api/map');
+  if (!ok) return;
+
+  // ── Update junction markers ──────────────────────────────────────
+  const seenIds = new Set();
+
+  data.junctions.forEach(r => {
+    seenIds.add(r.junction_id);
+    const color  = CONGESTION_COLOR[r.congestion_level] || CONGESTION_COLOR[null];
+    const radius = r.vehicle_count ? Math.max(8, Math.min(22, r.vehicle_count / 20)) : 9;
+
+    if (junctionMarkers[r.junction_id]) {
+      // Update existing marker: colour + popup
+      const m = junctionMarkers[r.junction_id];
+      m.setStyle({ fillColor: color, radius });
+      m.setPopupContent(makeJunctionMarker(r).getPopup().getContent());
+    } else {
+      // Add new marker
+      const m = makeJunctionMarker(r).addTo(map);
+      junctionMarkers[r.junction_id] = m;
+    }
+  });
+
+  // ── Rebuild incident markers (small number, fast) ────────────────
+  incidentMarkers.forEach(m => m.remove());
+  incidentMarkers = [];
+  data.incidents.forEach(r => {
+    const m = makeIncidentMarker(r).addTo(map);
+    incidentMarkers.push(m);
+  });
+
+  // ── Junction quick-list in sidebar ───────────────────────────────
+  document.getElementById('junctionList').innerHTML = data.junctions.map(r => {
+    const color = CONGESTION_COLOR[r.congestion_level] || CONGESTION_COLOR[null];
+    return `<div class="junction-item" onclick="flyTo(${r.latitude},${r.longitude},${r.junction_id})">
+      <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>
+      <span>${r.junction_name}</span>
+    </div>`;
+  }).join('');
+}
+
+function flyTo(lat, lng, junctionId) {
+  map.flyTo([lat, lng], 15, { duration: 1 });
+  if (junctionMarkers[junctionId]) {
+    setTimeout(() => junctionMarkers[junctionId].openPopup(), 1100);
+  }
+}
+
+// ── Load dashboard KPIs + tables ─────────────────────────────────────────
 async function loadDashboard() {
   const { ok, data } = await apiFetch('/api/dashboard');
-  if (!ok) { showToast('Failed to load dashboard', 'error'); return; }
+  if (!ok) { showToast('Failed to load dashboard data', 'error'); return; }
 
-  // KPIs
   const k = data.city_kpis || {};
   document.getElementById('kpiObs').textContent   = k.total_observations_24h ?? '—';
-  document.getElementById('kpiHigh').textContent  = k.high_congestion_count ?? '—';
-  document.getElementById('kpiSpeed').textContent = k.city_avg_speed ?? '—';
+  document.getElementById('kpiHigh').textContent  = k.high_congestion_count  ?? '—';
+  document.getElementById('kpiSpeed').textContent = k.city_avg_speed         ?? '—';
 
-  // Open incident total
   const total = (data.incident_summary || []).reduce((s, r) => s + r.count, 0);
   document.getElementById('kpiInc').textContent = total;
 
-  // Incident severity pills
   const pills = (data.incident_summary || []).map(r =>
     `<div style="text-align:center">
        ${severityBadge(r.severity)}
-       <div style="font-size:20px;font-weight:700;margin-top:4px">${r.count}</div>
+       <div style="font-size:22px;font-weight:700;margin-top:4px">${r.count}</div>
      </div>`
   ).join('');
-  document.getElementById('incSummaryBody').innerHTML = pills || '<span class="text-muted">No open incidents</span>';
+  document.getElementById('incSummaryBody').innerHTML =
+    pills || '<span class="text-muted">No open incidents</span>';
 
-  // Junctions
   renderTable('junctionBody', data.junctions, r => `
-    <tr>
+    <tr style="cursor:pointer" onclick="flyTo(${r.latitude ?? 0},${r.longitude ?? 0},${r.junction_id})">
       <td><strong>${r.junction_name}</strong></td>
       <td>${r.zone_name || '—'}</td>
       <td class="text-muted">${r.observation_time ? r.observation_time.slice(0,16) : '—'}</td>
@@ -126,7 +349,6 @@ async function loadDashboard() {
       <td>${signalBadge(r.signal_status)}</td>
     </tr>`);
 
-  // Zones
   renderTable('zoneBody', data.zones, r => `
     <tr>
       <td><strong>${r.zone_name}</strong></td>
@@ -136,12 +358,32 @@ async function loadDashboard() {
       <td>${r.observations_last_24h || 0}</td>
       <td>${r.avg_vehicle_count || '—'}</td>
       <td>${r.avg_speed_kmph || '—'} km/h</td>
-      <td>${r.open_incidents > 0 ? `<strong style="color:var(--danger)">${r.open_incidents}</strong>` : '0'}</td>
+      <td>${r.open_incidents > 0
+        ? `<strong style="color:var(--danger)">${r.open_incidents}</strong>` : '0'}</td>
     </tr>`);
+
+  document.getElementById('lastRefresh').textContent =
+    'Updated ' + new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
 }
 
-loadDashboard();
-setInterval(loadDashboard, 60000);
+// ── Fix: dashboard API doesn't return lat/lon, map API does — merge them
+// Make dashboard junction rows clickable by patching lat/lon from map data
+let mapJunctionCoords = {};  // junction_id → {lat, lng}
+
+async function loadMapAndCoords() {
+  const { ok, data } = await apiFetch('/api/map');
+  if (!ok) return;
+  data.junctions.forEach(r => { mapJunctionCoords[r.junction_id] = { lat: r.latitude, lng: r.longitude }; });
+  loadMap();  // draw markers
+}
+
+async function refresh() {
+  await Promise.all([loadDashboard(), loadMapAndCoords()]);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+refresh();
+setInterval(refresh, 60000);
 </script>
 </body>
 </html>

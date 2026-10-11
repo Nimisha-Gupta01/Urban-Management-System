@@ -548,6 +548,79 @@ def delete_incident(incident_id):
     db.commit()
     return jsonify({'message': 'Incident deleted', 'incident_id': incident_id}), 200
 
+# ── MAP DATA ──────────────────────────────────────────────────────────────────
+
+@app.route('/api/map', methods=['GET'])
+def get_map_data():
+    """
+    Returns all data needed to render the Leaflet.js map:
+      - junctions with lat/lon + most-recent congestion level + vehicle count
+      - open incidents with coordinates (from junction or road's first junction)
+    """
+    db = get_db()
+
+    # Junctions: most recent observation congestion per junction
+    junctions = db.execute(
+        """
+        SELECT
+            j.junction_id,
+            j.junction_name,
+            j.latitude,
+            j.longitude,
+            j.junction_type,
+            j.congestion_status,
+            z.zone_name,
+            t.congestion_level,
+            t.vehicle_count,
+            t.avg_speed_kmph,
+            t.observation_time,
+            t.weather_condition,
+            ts.operational_status AS signal_status
+        FROM Junction j
+        JOIN Zone z ON j.zone_id = z.zone_id
+        LEFT JOIN Traffic_Observation t ON j.junction_id = t.junction_id
+            AND t.observation_time = (
+                SELECT MAX(t2.observation_time)
+                FROM Traffic_Observation t2
+                WHERE t2.junction_id = j.junction_id
+            )
+        LEFT JOIN Traffic_Signal ts ON j.junction_id = ts.junction_id
+            AND ts.operational_status = 'Active'
+        WHERE j.latitude IS NOT NULL AND j.longitude IS NOT NULL
+        ORDER BY j.junction_name
+        """
+    ).fetchall()
+
+    # Open incidents: join to junction coords where available
+    incidents = db.execute(
+        """
+        SELECT
+            i.incident_id,
+            i.incident_type,
+            i.severity,
+            i.description,
+            i.reported_datetime,
+            r.road_name,
+            j.junction_name,
+            j.latitude,
+            j.longitude
+        FROM Incident i
+        LEFT JOIN Junction j ON i.junction_id = j.junction_id
+        LEFT JOIN Road r     ON i.road_id     = r.road_id
+        WHERE i.resolved_datetime IS NULL
+          AND j.latitude IS NOT NULL
+          AND j.longitude IS NOT NULL
+        ORDER BY CASE i.severity
+            WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2
+            WHEN 'MEDIUM'   THEN 3 ELSE 4 END
+        """
+    ).fetchall()
+
+    return jsonify({
+        'junctions': rows_to_list(junctions),
+        'incidents':  rows_to_list(incidents)
+    }), 200
+
 # ── DASHBOARD ─────────────────────────────────────────────────────────────────
 
 @app.route('/api/dashboard', methods=['GET'])
