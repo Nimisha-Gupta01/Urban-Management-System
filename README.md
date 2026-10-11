@@ -1,38 +1,180 @@
-# Urban Road & Real-Time Traffic Information and Management Database
+# Urban Road & Real-Time Traffic Management System
 ### BITS Pilani WILP | SESAP ZC337 — Database Systems and Applications
-### Team: Nimisha (I578445) · Fasi Ahmed Khan (I578459)
+### Team: Nimisha Gupta (I578445) · Fasi Ahmed Khan (I578459)
 
 ---
 
-## Project Overview
+## Tech Stack
 
-A two-term capstone project to design, develop, and demonstrate a database application
-for managing roads, junctions, traffic conditions, incidents, vehicles, and real-time
-traffic observations for an urban area (Bengaluru).
-
-- **Term 1:** Structured/Text relational database (SRS → ER/EER → Schema → SQL → Prototype)
-- **Term 2:** Multimodal extension (GIS/spatial data, traffic images, sensor time-series)
+| Layer | Technology |
+|---|---|
+| Database | PostgreSQL 16 |
+| Backend API | FastAPI + Uvicorn |
+| Frontend UI | Streamlit |
+| Containerisation | Docker + Docker Compose |
+| Modelling | draw.io |
 
 ---
 
-## Folder Structure
+## Project Structure
 
 ```
 Urban_Traffic_Management_System/
-├── README.md
-├── docs/
-│   ├── SRS.md                  ← Phase 1: Requirements
-│   ├── ER_Design.md            ← Phase 2: Entity & relationship decisions
-│   ├── ER_Diagram.png          ← Phase 2: draw.io export
-│   ├── Schema.md               ← Phase 3: Relational schema + normalization
-│   └── Multimodal_Plan.md      ← Term 2 planning
+├── docker-compose.yml          ← runs all 3 services
+├── Dockerfile                  ← shared image for API + Streamlit
+├── requirements.txt
+├── init_db.py                  ← seeds schema + sample data on first run
 ├── sql/
-│   ├── schema.sql              ← CREATE TABLE statements
-│   ├── queries.sql             ← SELECT queries (simple → complex)
-│   └── triggers.sql            ← Triggers, views, stored procedures
-└── app/
-    └── main.py                 ← Python/Streamlit prototype
+│   ├── schema.sql              ← CREATE TABLE statements (PostgreSQL)
+│   ├── queries.sql             ← analytical queries
+│   └── triggers.sql            ← triggers, views, stored procedures
+├── app/
+│   └── main.py                 ← FastAPI backend (all /api/* routes)
+├── streamlit_app/
+│   ├── Home.py                 ← landing page (KPIs + feature cards)
+│   ├── api_client.py           ← shared HTTP client, theme, table helper
+│   └── pages/
+│       ├── 1_Dashboard.py      ← live map + junction status
+│       ├── 2_Traffic.py        ← filter & search observations
+│       ├── 3_Add_Observation.py← POST new traffic observation
+│       ├── 4_Incidents.py      ← incident management
+│       └── 5_Roads_Zones.py    ← road network & zone analytics
+└── docs/
+    ├── SRS.md
+    ├── ER_Diagram.drawio
+    └── ...
 ```
+
+---
+
+## Running the Application
+
+### Option 1 — Docker (recommended, one command)
+
+**Prerequisites:** Docker Desktop installed and running.
+
+```bash
+# Clone / navigate to the project folder
+cd Urban_Traffic_Management_System
+
+# Build and start all services (first run takes ~2 min to build)
+docker compose up --build
+
+# Subsequent runs (no rebuild needed)
+docker compose up
+```
+
+Once running, open:
+
+| Service | URL |
+|---|---|
+| **Streamlit UI** | http://localhost:8501 |
+| **FastAPI docs** | http://localhost:8000/docs |
+| **PostgreSQL** | localhost:5432 (user: `traffic_user`, db: `traffic_db`, pass: `traffic_pass`) |
+
+To stop:
+```bash
+docker compose down
+```
+
+To stop and delete all data (wipe the database):
+```bash
+docker compose down -v
+```
+
+---
+
+### Option 2 — Local (without Docker)
+
+**Prerequisites:** Python 3.11+, PostgreSQL 16 running locally.
+
+#### 1. Create the database
+
+```bash
+psql -U postgres -c "CREATE USER traffic_user WITH PASSWORD 'traffic_pass';"
+psql -U postgres -c "CREATE DATABASE traffic_db OWNER traffic_user;"
+```
+
+#### 2. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+#### 3. Set environment variables
+
+```bash
+export PGHOST=localhost
+export PGPORT=5432
+export PGDATABASE=traffic_db
+export PGUSER=traffic_user
+export PGPASSWORD=traffic_pass
+```
+
+#### 4. Seed the database
+
+```bash
+python init_db.py
+```
+
+#### 5. Start the FastAPI backend
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### 6. Start the Streamlit UI (new terminal)
+
+```bash
+export API_BASE=http://localhost:8000
+streamlit run streamlit_app/Home.py --server.port 8501
+```
+
+Open http://localhost:8501 in your browser.
+
+---
+
+## UI Walkthrough
+
+### Role selector (sidebar)
+Switch between **Public / Officer / Admin** to simulate role-based access:
+- **Public** — read-only (Dashboard, Traffic, Roads & Zones)
+- **Officer** — can add traffic observations and manage incidents
+- **Admin** — full access including delete
+
+### Pages
+
+| Page | What it shows |
+|---|---|
+| **Home** | Live city KPIs (observations, avg speed, congestion count) + quick-nav cards |
+| **Dashboard** | Interactive Bengaluru map with colour-coded junctions, zone summary, open incidents chart |
+| **Traffic Data** | Filter observations by zone / junction / congestion level / time window; peak-hours chart |
+| **Add Observation** | Submit a new traffic observation (Officer/Admin only) — demonstrates ACID transaction T1 + PostgreSQL trigger |
+| **Incidents** | View, filter, update, and resolve incidents (Admin can delete) |
+| **Roads & Zones** | Browse road network, junctions, zone analytics, top-5 congested junctions chart |
+
+### Map legend
+| Colour | Congestion level |
+|---|---|
+| 🟢 Green | LOW |
+| 🔵 Blue | MODERATE |
+| 🟠 Orange | HIGH |
+| 🔴 Red | SEVERE |
+| ⚫ Grey | No data |
+
+---
+
+## Key Database Features Demonstrated
+
+| Feature | Where |
+|---|---|
+| ACID Transaction (T1) | POST /api/traffic → inserts observation atomically |
+| PostgreSQL Trigger | After INSERT on traffic_observation → updates junction congestion_status |
+| Views | v_junction_live_status, v_zone_summary used by dashboard API |
+| Stored Procedure | sp_resolve_incident — updates incident + logs to audit table |
+| Audit Log | Incident_Audit table populated by trigger on severity change |
+| Role-Based Access | X-User-Role header → API enforces read/write/delete permissions |
+| Indexes | On junction_id, road_id, observation_time for fast filtering |
 
 ---
 
@@ -43,36 +185,11 @@ Urban_Traffic_Management_System/
 | SRS Document | owns | reviews |
 | ER / EER Diagram | owns | contributes |
 | Normalization (FDs, BCNF) | owns | reviews |
-| SQLite Schema Creation | — | owns |
-| Data Sourcing & Import | — | owns |
+| PostgreSQL Schema | shared | shared |
+| Data Seeding | — | owns |
 | SQL Queries | shared | shared |
 | Triggers / Views | owns | — |
-| Application Prototype | — | owns |
+| FastAPI Backend | shared | shared |
+| Streamlit UI | owns | — |
 | Transactions + Concurrency | owns | — |
-| Security (roles, GRANT) | owns | — |
-| Recovery Demo | shared | shared |
-
----
-
-## Tech Stack
-
-- **Database:** SQLite + SQLiteBrowser
-- **Language:** Python / SQL
-- **Modelling:** draw.io (ER diagrams)
-- **UI:** Streamlit
-- **Version Control:** GitHub (SAP internal)
-
----
-
-## Key Dates
-
-| Date | Milestone |
-|---|---|
-| Sep 16–20 | Phase 1: SRS complete |
-| Sep 21–30 | Phase 2: ER/EER Diagram |
-| ~Oct 01 | **Mid-Semester Exam — freeze project 3 days before** |
-| Oct 06–14 | Phase 3: Schema + Normalization |
-| Oct 15–26 | Phase 4: SQL Implementation |
-| Oct 27–Nov 09 | Phase 5: Application Prototype |
-| Nov 10–16 | Phase 6: Term 1 wrap-up |
-| Nov 17–30 | Phase 7: Term 2 Multimodal Planning |
+| Docker Setup | — | owns |
