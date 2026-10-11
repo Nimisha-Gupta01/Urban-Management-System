@@ -4,12 +4,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import streamlit as st
 import pandas as pd
+import altair as alt
 import folium
 from streamlit_folium import st_folium
-from api_client import get
+from api_client import get, apply_light_theme, show_table
 
 st.set_page_config(page_title="Dashboard — Urban Traffic", page_icon="📊", layout="wide")
 role = st.session_state.get("role", "public")
+apply_light_theme()
 
 st.title("📊 Traffic Dashboard")
 st.caption("Live traffic conditions across Bengaluru junctions · auto-data from FastAPI + PostgreSQL")
@@ -48,7 +50,7 @@ COLOUR = {
 }
 
 if map_data:
-    m = folium.Map(location=[12.972, 77.64], zoom_start=12, tiles="CartoDB dark_matter")
+    m = folium.Map(location=[12.972, 77.64], zoom_start=12, tiles="CartoDB positron")
 
     for j in map_data.get("junctions", []):
         level = j.get("congestion_level")
@@ -92,7 +94,7 @@ if junctions:
     df = pd.DataFrame(junctions)
     cols = [c for c in ["junction_name", "zone_name", "congestion_level", "vehicle_count",
                         "avg_speed_kmph", "weather_condition", "signal_status"] if c in df.columns]
-    st.dataframe(df[cols].fillna("—"), use_container_width=True, hide_index=True)
+    show_table(df[cols].fillna("—"))
 else:
     st.info("No junction data.")
 
@@ -105,12 +107,23 @@ with left:
         df_z = pd.DataFrame(zones)
         cols = [c for c in ["zone_name", "zone_type", "total_junctions", "total_roads",
                             "observations_last_24h", "avg_vehicle_count", "open_incidents"] if c in df_z.columns]
-        st.dataframe(df_z[cols].fillna(0), use_container_width=True, hide_index=True)
+        show_table(df_z[cols].fillna(0))
 
 with right:
     st.subheader("🚨 Open Incidents by Severity")
     if inc_summ:
         df_i = pd.DataFrame(inc_summ)
-        st.bar_chart(df_i.set_index("severity")["count"])
+        sev_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+        sev_colors = {"CRITICAL": "#e53935", "HIGH": "#ff7043", "MEDIUM": "#ffa726", "LOW": "#66bb6a"}
+        df_i["color"] = df_i["severity"].map(sev_colors).fillna("#5b7fe8")
+        chart = alt.Chart(df_i).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+            x=alt.X("severity:O", sort=sev_order, title=None, axis=alt.Axis(labelColor="#555")),
+            y=alt.Y("count:Q", title="Incidents", axis=alt.Axis(labelColor="#555", titleColor="#333")),
+            color=alt.Color("severity:N", scale=alt.Scale(
+                domain=list(sev_colors.keys()), range=list(sev_colors.values())
+            ), legend=None),
+            tooltip=["severity", "count"],
+        ).properties(height=220, background="#ffffff").configure_view(strokeOpacity=0).configure_axis(gridColor="#e8ecf8")
+        st.altair_chart(chart, use_container_width=True)
     else:
         st.success("No open incidents.")

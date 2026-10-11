@@ -5,10 +5,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from api_client import get, post, put, delete
+from api_client import get, post, put, delete, apply_light_theme
 
 st.set_page_config(page_title="Incidents — Urban Traffic", page_icon="🚨", layout="wide")
 role = st.session_state.get("role", "public")
+apply_light_theme()
 
 st.title("🚨 Incident Management")
 st.caption("Report, view, and resolve traffic incidents — ACID transaction T2 demo")

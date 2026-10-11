@@ -4,10 +4,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import streamlit as st
 import pandas as pd
-from api_client import get
+import altair as alt
+from api_client import get, apply_light_theme, show_table
 
 st.set_page_config(page_title="Roads & Zones — Urban Traffic", page_icon="🛣️", layout="wide")
 role = st.session_state.get("role", "public")
+apply_light_theme()
 
 st.title("🛣️ Roads, Junctions & Zones")
 st.caption("Browse the road network and zone analytics")
@@ -41,7 +43,7 @@ with tab_roads:
         df = pd.DataFrame(roads)
         cols = [c for c in ["road_name", "road_type", "length_km", "num_lanes",
                             "speed_limit", "surface_type", "direction_type", "zone_name"] if c in df.columns]
-        st.dataframe(df[cols].fillna("—"), use_container_width=True, hide_index=True)
+        show_table(df[cols].fillna("—"))
         st.caption(f"{len(df)} roads")
     else:
         st.info("No roads found.")
@@ -63,7 +65,7 @@ with tab_junctions:
         df_j = pd.DataFrame(junctions)
         cols_j = [c for c in ["junction_name", "junction_type", "zone_name", "latitude",
                               "longitude", "signal_controlled", "congestion_status"] if c in df_j.columns]
-        st.dataframe(df_j[cols_j].fillna("—"), use_container_width=True, hide_index=True)
+        show_table(df_j[cols_j].fillna("—"))
         st.caption(f"{len(df_j)} junctions")
     else:
         st.info("No junctions found.")
@@ -78,7 +80,7 @@ with tab_zones:
         cols_z = [c for c in ["zone_name", "zone_type", "total_junctions", "total_roads",
                               "observations_last_24h", "avg_vehicle_count", "avg_speed_kmph",
                               "open_incidents"] if c in df_z.columns]
-        st.dataframe(df_z[cols_z].fillna(0), use_container_width=True, hide_index=True)
+        show_table(df_z[cols_z].fillna(0))
     else:
         st.info("No zone data.")
 
@@ -90,8 +92,13 @@ with tab_analytics:
         st.error(err4)
     elif top5:
         df_t = pd.DataFrame(top5)
-        st.dataframe(df_t.fillna("—"), use_container_width=True, hide_index=True)
+        show_table(df_t.fillna("—"))
         if "avg_vehicles" in df_t.columns and "junction_name" in df_t.columns:
-            st.bar_chart(df_t.set_index("junction_name")["avg_vehicles"])
+            chart = alt.Chart(df_t).mark_bar(color="#5b7fe8", cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+                x=alt.X("avg_vehicles:Q", title="Avg Vehicles", axis=alt.Axis(labelColor="#555", titleColor="#333")),
+                y=alt.Y("junction_name:N", sort="-x", title=None, axis=alt.Axis(labelColor="#333")),
+                tooltip=["junction_name", "avg_vehicles"],
+            ).properties(height=220, background="#ffffff").configure_view(strokeOpacity=0).configure_axis(gridColor="#e8ecf8")
+            st.altair_chart(chart, use_container_width=True)
     else:
         st.info("No congestion data in last 24 hours.")

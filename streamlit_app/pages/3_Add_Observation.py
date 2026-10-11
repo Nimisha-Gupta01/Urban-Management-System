@@ -4,10 +4,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import streamlit as st
 import pandas as pd
-from api_client import get, post
+from api_client import get, post, apply_light_theme, show_table
 
 st.set_page_config(page_title="Add Observation — Urban Traffic", page_icon="➕", layout="wide")
 role = st.session_state.get("role", "public")
+apply_light_theme()
 
 st.title("➕ Add Traffic Observation")
 st.caption("POST a new observation — demonstrates ACID transaction T1 + PostgreSQL trigger")
@@ -94,6 +95,6 @@ if sel_junc != "—" and sel_junc in junc_options:
     if recent:
         df = pd.DataFrame(recent)
         cols = [c for c in ["observation_time","road_name","vehicle_count","avg_speed_kmph","congestion_level","weather_condition"] if c in df.columns]
-        st.dataframe(df[cols].head(10).fillna("—"), use_container_width=True, hide_index=True)
+        show_table(df[cols].head(10).fillna("—"))
     else:
         st.info("No recent observations for this junction.")

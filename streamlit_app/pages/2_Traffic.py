@@ -4,10 +4,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import streamlit as st
 import pandas as pd
-from api_client import get
+import altair as alt
+from api_client import get, apply_light_theme, show_table
 
 st.set_page_config(page_title="Traffic Data — Urban Traffic", page_icon="🚗", layout="wide")
 role = st.session_state.get("role", "public")
+apply_light_theme()
 
 st.title("🚗 Traffic Observations")
 st.caption("Search and filter traffic observations from PostgreSQL")
@@ -72,7 +74,15 @@ if not df.empty:
     if ph_data:
         df_ph = pd.DataFrame(ph_data).sort_values("hour_of_day")
         if not df_ph.empty:
-            st.bar_chart(df_ph.set_index("hour_of_day")["avg_vehicles"])
+            df_ph["hour_of_day"] = df_ph["hour_of_day"].astype(str).str.zfill(2)
+            chart = alt.Chart(df_ph).mark_bar(color="#5b7fe8", cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+                x=alt.X("hour_of_day:O", title="Hour of Day", axis=alt.Axis(labelColor="#555", titleColor="#333")),
+                y=alt.Y("avg_vehicles:Q", title="Avg Vehicles", axis=alt.Axis(labelColor="#555", titleColor="#333")),
+                tooltip=["hour_of_day", "avg_vehicles"],
+            ).properties(height=280, background="#ffffff").configure_view(
+                strokeOpacity=0
+            ).configure_axis(gridColor="#e8ecf8").configure_axisX(labelAngle=0)
+            st.altair_chart(chart, use_container_width=True)
 
     st.divider()
 
@@ -81,4 +91,4 @@ if not df.empty:
     show_cols = [c for c in ["observation_time", "junction_name", "road_name", "zone_name",
                              "vehicle_count", "avg_speed_kmph", "congestion_level",
                              "weather_condition", "data_source"] if c in df.columns]
-    st.dataframe(df[show_cols].fillna("—"), use_container_width=True, hide_index=True)
+    show_table(df[show_cols].fillna("—"))
