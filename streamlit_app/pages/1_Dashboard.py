@@ -58,7 +58,7 @@ COLOUR = {
 }
 
 if map_data:
-    m = folium.Map(location=[12.972, 77.64], zoom_start=12, tiles="CartoDB positron")
+    m = folium.Map(location=[12.972, 77.64], zoom_start=12, tiles="OpenStreetMap")
 
     for j in map_data.get("junctions", []):
         level = j.get("congestion_level")
