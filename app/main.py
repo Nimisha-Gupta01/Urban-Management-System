@@ -82,9 +82,18 @@ def fetchone(conn, sql, params=()):
 
 
 def execute(conn, sql, params=()):
-    with conn.cursor() as cur:
-        cur.execute(sql, params)
-        return cur
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    return cur
+
+
+def fetchid(conn, sql, params=()):
+    """Execute a RETURNING statement and return the first column of the first row."""
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    row = cur.fetchone()
+    cur.close()
+    return row[0] if row else None
 
 # ── Role-based access control ─────────────────────────────────────────────────
 
@@ -329,7 +338,7 @@ def post_traffic(data: TrafficObservationIn, x_user_role: Optional[str] = Header
         # trg_congestion_alert trigger handles junction congestion update atomically
         # 2PL Growing phase: acquire write lock on Traffic_Observation
         try:
-            cur = execute(conn, """
+            obs_id = fetchid(conn, """
                 INSERT INTO Traffic_Observation
                     (junction_id, road_id, observation_time, vehicle_count,
                      avg_speed_kmph, congestion_level, weather_condition, data_source)
@@ -340,7 +349,6 @@ def post_traffic(data: TrafficObservationIn, x_user_role: Optional[str] = Header
                 data.vehicle_count, data.avg_speed_kmph,
                 data.congestion_level, data.weather_condition, data.data_source
             ))
-            obs_id = cur.fetchone()[0]
             # 2PL Shrinking phase: COMMIT releases all locks
         except psycopg2.errors.ForeignKeyViolation as e:
             raise HTTPException(status_code=400, detail=f"FK violation: {e}")
@@ -353,32 +361,14 @@ def post_traffic(data: TrafficObservationIn, x_user_role: Optional[str] = Header
 def post_sensor_reading(data: SensorReadingIn):
     """Ingest a raw sensor reading into Sensor_Reading table."""
     import json
+    payload_json = json.dumps(data.raw_payload) if data.raw_payload else None
     with get_db() as conn:
-        try:
-            cur = execute(conn, """
-                INSERT INTO Sensor_Reading
-                    (sensor_id, read_time, vehicle_count, avg_speed, raw_payload)
-                VALUES (%s, NOW(), %s, %s, %s)
-                RETURNING reading_id
-            """, (
-                data.sensor_id,
-                data.vehicle_count,
-                data.avg_speed,
-                json.dumps(data.raw_payload) if data.raw_payload else None,
-            ))
-            reading_id = cur.fetchone()[0]
-        except psycopg2.errors.ForeignKeyViolation:
-            cur = execute(conn, """
-                INSERT INTO Sensor_Reading
-                    (read_time, vehicle_count, avg_speed, raw_payload)
-                VALUES (NOW(), %s, %s, %s)
-                RETURNING reading_id
-            """, (
-                data.vehicle_count,
-                data.avg_speed,
-                json.dumps(data.raw_payload) if data.raw_payload else None,
-            ))
-            reading_id = cur.fetchone()[0]
+        reading_id = fetchid(conn, """
+            INSERT INTO Sensor_Reading
+                (sensor_id, read_time, vehicle_count, avg_speed, raw_payload)
+            VALUES (%s, NOW(), %s, %s, %s)
+            RETURNING reading_id
+        """, (data.sensor_id, data.vehicle_count, data.avg_speed, payload_json))
     return {"message": "Reading recorded", "reading_id": reading_id}
 
 # ── INCIDENTS ─────────────────────────────────────────────────────────────────
@@ -454,7 +444,7 @@ def post_incident(data: IncidentIn, x_user_role: Optional[str] = Header(default=
 
     with get_db() as conn:
         try:
-            cur = execute(conn, """
+            inc_id = fetchid(conn, """
                 INSERT INTO Incident
                     (incident_type, severity, description,
                      reported_datetime, road_id, junction_id, vehicle_id, reported_by)
@@ -464,7 +454,6 @@ def post_incident(data: IncidentIn, x_user_role: Optional[str] = Header(default=
                 data.incident_type, data.severity, data.description,
                 data.road_id, data.junction_id, data.vehicle_id, data.reported_by
             ))
-            inc_id = cur.fetchone()[0]
         except psycopg2.errors.ForeignKeyViolation as e:
             raise HTTPException(status_code=400, detail=f"FK violation: {e}")
 
@@ -735,7 +724,7 @@ def report_incident_public(data: PublicIncidentIn):
     """Public endpoint — citizens can report incidents without authentication."""
     with get_db() as conn:
         try:
-            cur = execute(conn, """
+            inc_id = fetchid(conn, """
                 INSERT INTO Incident
                     (incident_type, severity, description,
                      reported_datetime, road_id, junction_id, reported_by)
@@ -745,7 +734,6 @@ def report_incident_public(data: PublicIncidentIn):
                 data.incident_type, data.description,
                 data.road_id, data.junction_id,
             ))
-            inc_id = cur.fetchone()[0]
         except psycopg2.errors.ForeignKeyViolation as e:
             raise HTTPException(status_code=400, detail=f"Invalid junction_id or road_id: {e}")
 
