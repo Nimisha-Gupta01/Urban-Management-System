@@ -49,14 +49,10 @@ if submitted:
         "road_id":       road_opts[sel_road],
     }
 
-    import requests
-    API_BASE = os.getenv("API_BASE", "http://localhost:8000")
-    try:
-        resp = requests.post(f"{API_BASE}/api/incidents/report", json=payload, timeout=10)
-        if resp.status_code == 201:
-            st.success(f"Thank you! Your report has been submitted (ID: {resp.json()['incident_id']}). "
-                       f"Traffic officers have been notified.")
-        else:
-            st.error(f"Submission failed: {resp.json().get('detail', 'Unknown error')}")
-    except Exception as e:
-        st.error(f"Could not connect to server: {e}")
+    from api_client import post as api_post
+    resp_data, err = api_post("/api/incidents/report", payload, role="public")
+    if err:
+        st.error(f"Submission failed: {err}")
+    else:
+        st.success(f"Thank you! Your report has been submitted (ID: {resp_data.get('incident_id')}). "
+                   f"Traffic officers have been notified.")
