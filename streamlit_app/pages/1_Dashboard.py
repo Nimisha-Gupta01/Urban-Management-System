@@ -10,8 +10,16 @@ from streamlit_folium import st_folium
 from api_client import get, apply_light_theme, show_table
 
 st.set_page_config(page_title="Dashboard — Urban Traffic", page_icon="📊", layout="wide")
+import time
+
 role = st.session_state.get("role", "public")
 apply_light_theme()
+
+with st.sidebar:
+    live_mode = st.toggle("🔴 Live Mode", value=False,
+                          help="Auto-refresh every 30 seconds")
+    if live_mode:
+        st.caption("Refreshing every 30s...")
 
 st.title("📊 Traffic Dashboard")
 st.caption("Live traffic conditions across Bengaluru junctions · auto-data from FastAPI + PostgreSQL")
@@ -127,3 +135,8 @@ with right:
         st.altair_chart(chart, use_container_width=True)
     else:
         st.success("No open incidents.")
+
+# ── Auto-refresh when live mode is on ────────────────────────────────────────
+if live_mode:
+    time.sleep(30)
+    st.rerun()
