@@ -99,10 +99,17 @@ def init(reset=False):
         triggers_ddl = extract_triggers_ddl(triggers_path)
         run_sql(conn, triggers_ddl, "Views, trigger functions, triggers")
 
-        # 3. Seed data
-        seed_path = os.path.join(SQL_DIR, 'seed_data.sql')
-        with open(seed_path) as f:
-            run_sql(conn, f.read(), "Sample data (Bengaluru roads/junctions/incidents)")
+        # 3. Seed data — only if Zone table is empty (idempotent restarts)
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM Zone")
+            zone_count = cur.fetchone()[0]
+
+        if zone_count == 0:
+            seed_path = os.path.join(SQL_DIR, 'seed_data.sql')
+            with open(seed_path) as f:
+                run_sql(conn, f.read(), "Sample data (Bengaluru roads/junctions/incidents)")
+        else:
+            print("  → Sample data already present, skipping seed ... OK")
 
         # 4. Populate PostGIS geometry from lat/lon
         with conn.cursor() as cur:
