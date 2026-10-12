@@ -33,11 +33,17 @@ DB_CONFIG = {
     "password": os.getenv("PGPASSWORD", "traffic_pass"),
 }
 
+from app.scheduler import start_scheduler
+
 app = FastAPI(
     title="Urban Traffic Management System",
     description="BITS Pilani WILP | SESAP ZC337",
-    version="2.0.0"
+    version="3.0.0"
 )
+
+@app.on_event("startup")
+def startup_event():
+    start_scheduler()
 
 app.add_middleware(
     CORSMiddleware,
@@ -158,6 +164,49 @@ class IncidentUpdate(BaseModel):
     description: Optional[str] = None
     resolved_datetime: Optional[str] = None
     reported_by: Optional[str] = None
+
+
+class SensorReadingIn(BaseModel):
+    sensor_id: int
+    vehicle_count: int
+    avg_speed: float
+    raw_payload: Optional[dict] = None
+
+    @validator('vehicle_count')
+    def validate_count(cls, v):
+        if v < 0:
+            raise ValueError('vehicle_count must be >= 0')
+        return v
+
+    @validator('avg_speed')
+    def validate_speed(cls, v):
+        if v < 0:
+            raise ValueError('avg_speed must be >= 0')
+        return v
+
+
+class SignalOverrideIn(BaseModel):
+    green_duration_sec: int
+
+    @validator('green_duration_sec')
+    def validate_duration(cls, v):
+        if not (5 <= v <= 300):
+            raise ValueError('green_duration_sec must be between 5 and 300')
+        return v
+
+
+class PublicIncidentIn(BaseModel):
+    incident_type: str
+    description: Optional[str] = None
+    junction_id: Optional[int] = None
+    road_id: Optional[int] = None
+
+    @validator('incident_type')
+    def validate_type(cls, v):
+        valid = {'Accident', 'Breakdown', 'Roadblock', 'Flooding'}
+        if v not in valid:
+            raise ValueError(f'incident_type must be one of {valid}')
+        return v
 
 # ── Health check ──────────────────────────────────────────────────────────────
 
@@ -297,6 +346,40 @@ def post_traffic(data: TrafficObservationIn, x_user_role: Optional[str] = Header
             raise HTTPException(status_code=400, detail=f"FK violation: {e}")
 
     return {"message": "Observation recorded", "obs_id": obs_id}
+
+# ── SENSOR READINGS ───────────────────────────────────────────────────────────
+
+@app.post("/api/sensors/reading", status_code=201)
+def post_sensor_reading(data: SensorReadingIn):
+    """Ingest a raw sensor reading into Sensor_Reading table."""
+    import json
+    with get_db() as conn:
+        try:
+            cur = execute(conn, """
+                INSERT INTO Sensor_Reading
+                    (sensor_id, read_time, vehicle_count, avg_speed, raw_payload)
+                VALUES (%s, NOW(), %s, %s, %s)
+                RETURNING reading_id
+            """, (
+                data.sensor_id,
+                data.vehicle_count,
+                data.avg_speed,
+                json.dumps(data.raw_payload) if data.raw_payload else None,
+            ))
+            reading_id = cur.fetchone()[0]
+        except psycopg2.errors.ForeignKeyViolation:
+            cur = execute(conn, """
+                INSERT INTO Sensor_Reading
+                    (read_time, vehicle_count, avg_speed, raw_payload)
+                VALUES (NOW(), %s, %s, %s)
+                RETURNING reading_id
+            """, (
+                data.vehicle_count,
+                data.avg_speed,
+                json.dumps(data.raw_payload) if data.raw_payload else None,
+            ))
+            reading_id = cur.fetchone()[0]
+    return {"message": "Reading recorded", "reading_id": reading_id}
 
 # ── INCIDENTS ─────────────────────────────────────────────────────────────────
 
@@ -560,3 +643,111 @@ def get_audit_log(x_user_role: Optional[str] = Header(default="public")):
     require_role(role, 'admin')
     with get_db() as conn:
         return fetchall(conn, "SELECT * FROM Incident_Audit ORDER BY changed_at DESC LIMIT 100")
+
+# ── SIGNAL OVERRIDE ───────────────────────────────────────────────────────────
+
+@app.post("/api/signals/{signal_id}/override")
+def override_signal(
+    signal_id: int,
+    data: SignalOverrideIn,
+    x_user_role: Optional[str] = Header(default="public")
+):
+    """Manually override a traffic signal's green phase duration (admin only)."""
+    role = get_role(x_user_role)
+    require_role(role, 'admin')
+
+    with get_db() as conn:
+        row = fetchone(conn,
+            "SELECT signal_id FROM Traffic_Signal WHERE signal_id = %s", (signal_id,))
+        if row is None:
+            raise HTTPException(status_code=404, detail="Signal not found")
+        execute(conn,
+            "UPDATE Traffic_Signal SET green_duration_sec = %s WHERE signal_id = %s",
+            (data.green_duration_sec, signal_id))
+
+    return {"message": "Signal overridden", "signal_id": signal_id,
+            "green_duration_sec": data.green_duration_sec}
+
+
+@app.get("/api/signals")
+def get_signals(junction_id: Optional[int] = None):
+    """List all traffic signals with their current green_duration_sec."""
+    sql = """
+        SELECT ts.*, j.junction_name, z.zone_name
+        FROM Traffic_Signal ts
+        JOIN Junction j ON ts.junction_id = j.junction_id
+        JOIN Zone z     ON j.zone_id      = z.zone_id
+        WHERE 1=1
+    """
+    params = []
+    if junction_id:
+        sql += " AND ts.junction_id = %s"
+        params.append(junction_id)
+    sql += " ORDER BY j.junction_name"
+    with get_db() as conn:
+        return fetchall(conn, sql, params)
+
+
+# ── NEARBY JUNCTIONS (PostGIS spatial query) ──────────────────────────────────
+
+@app.get("/api/junctions/nearby")
+def get_nearby_junctions(lat: float, lon: float, radius_km: float = 2.0):
+    """Find junctions within radius_km of a given lat/lon using PostGIS."""
+    with get_db() as conn:
+        col = fetchone(conn, """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name='junction' AND column_name='geom'
+        """)
+        if col is None:
+            return fetchall(conn, """
+                SELECT j.*, z.zone_name,
+                    ROUND((
+                        111.0 * SQRT(
+                            POWER(j.latitude  - %s, 2) +
+                            POWER(j.longitude - %s, 2)
+                        )
+                    )::NUMERIC, 2) AS distance_km
+                FROM Junction j
+                JOIN Zone z ON j.zone_id = z.zone_id
+                WHERE j.latitude IS NOT NULL
+                ORDER BY distance_km
+                LIMIT 10
+            """, (lat, lon))
+
+        return fetchall(conn, """
+            SELECT j.*, z.zone_name,
+                ROUND(
+                    (ST_Distance(j.geom, ST_MakePoint(%s, %s)::GEOGRAPHY) / 1000)::NUMERIC,
+                    2
+                ) AS distance_km
+            FROM Junction j
+            JOIN Zone z ON j.zone_id = z.zone_id
+            WHERE j.geom IS NOT NULL
+              AND ST_DWithin(j.geom, ST_MakePoint(%s, %s)::GEOGRAPHY, %s)
+            ORDER BY distance_km
+        """, (lon, lat, lon, lat, radius_km * 1000))
+
+
+# ── PUBLIC CITIZEN INCIDENT REPORT (no auth required) ────────────────────────
+
+@app.post("/api/incidents/report", status_code=201)
+def report_incident_public(data: PublicIncidentIn):
+    """Public endpoint — citizens can report incidents without authentication."""
+    with get_db() as conn:
+        try:
+            cur = execute(conn, """
+                INSERT INTO Incident
+                    (incident_type, severity, description,
+                     reported_datetime, road_id, junction_id, reported_by)
+                VALUES (%s, 'MEDIUM', %s, NOW(), %s, %s, 'Citizen')
+                RETURNING incident_id
+            """, (
+                data.incident_type, data.description,
+                data.road_id, data.junction_id,
+            ))
+            inc_id = cur.fetchone()[0]
+        except psycopg2.errors.ForeignKeyViolation as e:
+            raise HTTPException(status_code=400, detail=f"Invalid junction_id or road_id: {e}")
+
+    return {"message": "Incident reported — thank you!", "incident_id": inc_id}
+
