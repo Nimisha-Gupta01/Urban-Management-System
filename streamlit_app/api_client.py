@@ -31,6 +31,20 @@ LIGHT_CSS = """
         color: #1a1a2e !important;
     }
 
+    /* ── Sidebar collapse/expand button ─────────────────────────────── */
+    [data-testid="collapsedControl"] {
+        background-color: #ffffff !important;
+        border: 1px solid #e0e4ea !important;
+    }
+    [data-testid="collapsedControl"] svg {
+        fill: #1a1a2e !important;
+        color: #1a1a2e !important;
+    }
+    button[kind="header"] {
+        background-color: #ffffff !important;
+        color: #1a1a2e !important;
+    }
+
     /* ── Headings ────────────────────────────────────────────────────── */
     h1, h2, h3, h4, h5, h6 {
         color: #1a1a2e !important;
