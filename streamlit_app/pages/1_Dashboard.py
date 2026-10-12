@@ -138,5 +138,9 @@ with right:
 
 # ── Auto-refresh when live mode is on ────────────────────────────────────────
 if live_mode:
-    time.sleep(30)
+    placeholder = st.empty()
+    for remaining in range(30, 0, -1):
+        placeholder.caption(f"Next refresh in {remaining}s...")
+        time.sleep(1)
+    placeholder.empty()
     st.rerun()

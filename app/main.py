@@ -357,6 +357,27 @@ def post_traffic(data: TrafficObservationIn, x_user_role: Optional[str] = Header
 
 # ── SENSOR READINGS ───────────────────────────────────────────────────────────
 
+@app.get("/api/sensors")
+def get_sensors():
+    """List all sensors with their IDs and linked junctions."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT s.sensor_id, s.sensor_type, s.status, s.junction_id,
+                   j.junction_name
+            FROM Sensor s
+            LEFT JOIN Junction j USING (junction_id)
+            ORDER BY s.sensor_id
+        """)
+        rows = cur.fetchall()
+        cur.close()
+    return [
+        {"sensor_id": r[0], "sensor_type": r[1], "status": r[2],
+         "junction_id": r[3], "junction_name": r[4]}
+        for r in rows
+    ]
+
+
 @app.post("/api/sensors/reading", status_code=201)
 def post_sensor_reading(data: SensorReadingIn):
     """Ingest a raw sensor reading into Sensor_Reading table."""

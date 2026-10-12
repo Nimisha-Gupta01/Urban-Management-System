@@ -16,7 +16,11 @@ import requests
 
 API_BASE = os.getenv("API_BASE", "http://localhost:8000")
 INTERVAL_SEC = 30
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [SIM] %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(message)s",
+    datefmt="%H:%M:%S",
+)
 log = logging.getLogger(__name__)
 
 WEATHER_OPTIONS = ["Clear", "Rainy", "Foggy", "Cloudy", "Stormy"]
@@ -31,6 +35,16 @@ def get_junctions() -> list:
         return [j for j in junctions if j.get("junction_id")]
     except Exception as e:
         log.warning(f"Could not fetch junctions: {e}")
+        return []
+
+
+def get_sensors() -> list:
+    try:
+        resp = requests.get(f"{API_BASE}/api/sensors", timeout=10)
+        resp.raise_for_status()
+        sensors = resp.json()
+        return [s["sensor_id"] for s in sensors if s.get("sensor_id")]
+    except Exception:
         return []
 
 
@@ -102,7 +116,7 @@ def post_sensor_reading(sensor_id, vehicle_count, avg_speed):
         resp.raise_for_status()
         return True
     except Exception as e:
-        log.warning(f"POST /api/sensors/reading failed: {e}")
+        log.warning(f"           ⚠️  Sensor reading failed (sensor_id={sensor_id}): {e}")
         return False
 
 
@@ -125,9 +139,17 @@ def main():
         log.error("API never became ready. Exiting.")
         return
 
-    log.info(f"Simulator started. Posting every {INTERVAL_SEC}s to {API_BASE}")
+    log.info("=" * 60)
+    log.info("  UTMS Traffic Simulator — started")
+    log.info(f"  Posting to: {API_BASE}  |  Interval: {INTERVAL_SEC}s")
+    log.info("=" * 60)
 
+    sensor_ids = get_sensors()
+    log.info(f"  Loaded {len(sensor_ids)} sensors from database")
+
+    tick = 0
     while True:
+        tick += 1
         junctions = get_junctions()
         if not junctions:
             log.warning("No junctions found, retrying in 30s...")
@@ -145,21 +167,33 @@ def main():
         vehicle_count, avg_speed, congestion_level = traffic_profile(hour)
         weather = random.choices(WEATHER_OPTIONS, weights=WEATHER_WEIGHTS)[0]
 
+        LEVEL_ICON = {"LOW": "🟢", "MODERATE": "🟡", "HIGH": "🟠", "SEVERE": "🔴"}
+        icon = LEVEL_ICON.get(congestion_level, "⚪")
+
         ok = post_observation(junction_id, road_id, vehicle_count,
                               avg_speed, congestion_level, weather)
         if ok:
             log.info(
-                f"Junction {junction.get('junction_name', junction_id)} | "
-                f"{vehicle_count} vehicles | {avg_speed} kmph | {congestion_level} | {weather}"
+                f"[Tick #{tick:04d}] {icon} {congestion_level:<8} | "
+                f"{junction.get('junction_name', junction_id):<35} | "
+                f"Vehicles: {vehicle_count:>3} | Speed: {avg_speed:>5} km/h | Weather: {weather}"
             )
 
-        post_sensor_reading(
-            sensor_id=junction_id,
-            vehicle_count=vehicle_count,
-            avg_speed=avg_speed,
-        )
+        if sensor_ids:
+            sensor_id = random.choice(sensor_ids)
+            posted = post_sensor_reading(
+                sensor_id=sensor_id,
+                vehicle_count=vehicle_count,
+                avg_speed=avg_speed,
+            )
+            if posted:
+                log.info(
+                    f"           📡 Sensor #{sensor_id} reading saved "
+                    f"(vehicles={vehicle_count}, speed={avg_speed})"
+                )
 
         time.sleep(INTERVAL_SEC)
+
 
 
 if __name__ == "__main__":

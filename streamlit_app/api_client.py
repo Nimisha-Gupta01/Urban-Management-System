@@ -127,6 +127,40 @@ LIGHT_CSS = """
         border-radius: 6px !important;
     }
 
+    /* ── Selectbox dropdown popup (BaseWeb popover) ──────────────────── */
+    [data-baseweb="popover"] {
+        background-color: #ffffff !important;
+    }
+    [data-baseweb="popover"] ul,
+    [data-baseweb="popover"] [role="listbox"] {
+        background-color: #ffffff !important;
+    }
+    [data-baseweb="popover"] li,
+    [data-baseweb="popover"] [role="option"] {
+        background-color: #ffffff !important;
+        color: #1a1a2e !important;
+    }
+    [data-baseweb="popover"] li:hover,
+    [data-baseweb="popover"] [role="option"]:hover,
+    [data-baseweb="popover"] [aria-selected="true"] {
+        background-color: #e8ecf8 !important;
+        color: #1a1a2e !important;
+    }
+    /* menu list container */
+    [data-baseweb="menu"] {
+        background-color: #ffffff !important;
+    }
+    [data-baseweb="menu"] li,
+    [data-baseweb="menu"] [role="option"] {
+        background-color: #ffffff !important;
+        color: #1a1a2e !important;
+    }
+    [data-baseweb="menu"] li:hover,
+    [data-baseweb="menu"] [role="option"]:hover {
+        background-color: #e8ecf8 !important;
+        color: #1a1a2e !important;
+    }
+
     /* ── Dataframe / table ───────────────────────────────────────────── */
     [data-testid="stDataFrame"],
     [data-testid="stDataFrameResizable"] {
