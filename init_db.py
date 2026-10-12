@@ -104,6 +104,16 @@ def init(reset=False):
         with open(seed_path) as f:
             run_sql(conn, f.read(), "Sample data (Bengaluru roads/junctions/incidents)")
 
+        # 4. Populate PostGIS geometry from lat/lon
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE Junction
+                SET geom = ST_MakePoint(longitude, latitude)::GEOGRAPHY
+                WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND geom IS NULL
+            """)
+        conn.commit()
+        print("  → PostGIS geometry populated for Junction ... OK")
+
         print(f"\nDatabase ready: {DB_CONFIG['dbname']} on {DB_CONFIG['host']}:{DB_CONFIG['port']}")
 
     except psycopg2.Error as e:

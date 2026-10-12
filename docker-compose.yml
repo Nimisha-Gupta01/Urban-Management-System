@@ -1,7 +1,7 @@
 services:
 
   postgres:
-    image: postgres:16-alpine
+    image: postgis/postgis:16-3.4-alpine
     container_name: utms_postgres
     environment:
       POSTGRES_DB:       traffic_db
@@ -29,6 +29,8 @@ services:
       PGDATABASE: traffic_db
       PGUSER:     traffic_user
       PGPASSWORD: traffic_pass
+      SENDGRID_API_KEY: ""
+      ALERT_EMAIL: ""
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,6 +48,16 @@ services:
     depends_on:
       - api
     command: streamlit run streamlit_app/Home.py --server.port 8501 --server.address 0.0.0.0
+    restart: unless-stopped
+
+  simulator:
+    build: .
+    container_name: utms_simulator
+    environment:
+      API_BASE: http://api:8000
+    depends_on:
+      - api
+    command: python data/simulator.py
     restart: unless-stopped
 
 volumes:

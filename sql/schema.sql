@@ -284,3 +284,27 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO officer_role;
 GRANT SELECT ON Zone, Road, Junction, Traffic_Observation TO public_role;
 REVOKE SELECT ON Vehicle FROM public_role;
 REVOKE SELECT ON Driver FROM public_role;
+
+-- ============================================================
+-- POSTGIS SPATIAL EXTENSION
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+ALTER TABLE Junction ADD COLUMN IF NOT EXISTS geom GEOGRAPHY(POINT, 4326);
+
+CREATE INDEX IF NOT EXISTS idx_junction_geom ON Junction USING GIST(geom);
+
+-- ============================================================
+-- SENSOR_READING  (time-series raw readings)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS Sensor_Reading (
+    reading_id    SERIAL PRIMARY KEY,
+    sensor_id     INTEGER REFERENCES Sensor(sensor_id) ON DELETE CASCADE,
+    read_time     TIMESTAMP NOT NULL DEFAULT NOW(),
+    vehicle_count INTEGER   CHECK (vehicle_count >= 0),
+    avg_speed     REAL      CHECK (avg_speed >= 0),
+    raw_payload   JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_sensor_reading_time
+    ON Sensor_Reading(sensor_id, read_time);
