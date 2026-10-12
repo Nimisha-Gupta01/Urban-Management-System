@@ -14,8 +14,8 @@ apply_light_theme()
 st.title("🛣️ Roads, Junctions & Zones")
 st.caption("Browse the road network and zone analytics")
 
-tab_roads, tab_junctions, tab_zones, tab_analytics = st.tabs(
-    ["🛣️ Roads", "🚦 Junctions", "🏙️ Zones", "📈 Analytics"]
+tab_roads, tab_junctions, tab_zones, tab_analytics, tab_signals = st.tabs(
+    ["🛣️ Roads", "🚦 Junctions", "🏙️ Zones", "📈 Analytics", "🚥 Signals"]
 )
 
 # ── Tab 1: Roads ──────────────────────────────────────────────────────────────
@@ -102,3 +102,19 @@ with tab_analytics:
             st.altair_chart(chart, use_container_width=True)
     else:
         st.info("No congestion data in last 24 hours.")
+
+# ── Tab 5: Signals ────────────────────────────────────────────────────────────
+with tab_signals:
+    st.subheader("🚥 Traffic Signal Status")
+    st.caption("Green phase durations are updated automatically by the adaptive signal engine")
+
+    signals_data, sig_err = get("/api/signals", role=role)
+    if sig_err:
+        st.info("Signal data not available.")
+    elif signals_data:
+        df_sig = pd.DataFrame(signals_data)
+        cols_sig = [c for c in ["junction_name", "signal_type", "operational_status",
+                                 "green_duration_sec", "installed_date"] if c in df_sig.columns]
+        show_table(df_sig[cols_sig].fillna("—"))
+    else:
+        st.info("No signal data.")
