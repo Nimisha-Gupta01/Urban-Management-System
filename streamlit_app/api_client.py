@@ -244,6 +244,9 @@ LIGHT_CSS = """
     }
     .feature-card h4 { margin: 0 0 0.3rem 0; color: #1a1a2e !important; font-size: 1rem; }
     .feature-card p  { margin: 0; color: #555 !important; font-size: 0.85rem; }
+    a .feature-card, a:visited .feature-card { color: inherit !important; text-decoration: none !important; }
+    a .feature-card h4 { color: #1a1a2e !important; }
+    a .feature-card p  { color: #555 !important; }
     .clickable-card  { cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s; }
     .clickable-card:hover {
         border-color: #1a1a2e !important;
@@ -258,14 +261,19 @@ LIGHT_CSS = """
     }
 
     /* ── Button ──────────────────────────────────────────────────────── */
-    [data-testid="baseButton-secondary"] {
+    [data-testid="baseButton-secondary"],
+    [data-testid="baseButton-secondary"] p,
+    [data-testid="baseButton-secondary"] span {
         background: #ffffff !important;
         color: #1a1a2e !important;
         border: 1px solid #ced4da !important;
     }
-    [data-testid="baseButton-primary"] {
+    [data-testid="baseButton-primary"],
+    [data-testid="baseButton-primary"] p,
+    [data-testid="baseButton-primary"] span {
         background: #1a1a2e !important;
         color: #ffffff !important;
+        border: none !important;
     }
 </style>
 """
