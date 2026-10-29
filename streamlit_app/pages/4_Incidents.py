@@ -5,16 +5,22 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from api_client import get, post, put, delete, apply_light_theme
+from api_client import get, post, put, delete, apply_light_theme, icon
 
 st.set_page_config(page_title="Incidents — Urban Traffic", page_icon="🚨", layout="wide")
 role = st.session_state.get("role", "public")
 apply_light_theme()
 
-st.title("🚨 Incident Management")
+st.markdown(
+    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.2rem;">'
+    f'{icon("warning_amber", size="lg", color="#e53935")}'
+    f'<span style="font-size:1.8rem;font-weight:700;color:#1a1a2e;">Incident Management</span>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
 st.caption("Report, view, and resolve traffic incidents — ACID transaction T2 demo")
 
-tab_view, tab_report = st.tabs(["📋 View Incidents", "📝 Report Incident"])
+tab_view, tab_report = st.tabs(["View Incidents", "Report Incident"])
 
 # ── Tab 1: View Incidents ─────────────────────────────────────────────────────
 with tab_view:
@@ -51,8 +57,17 @@ with tab_view:
         st.divider()
 
         for _, row in df.iterrows():
-            sev_color = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(row["severity"], "⚪")
-            with st.expander(f"{sev_color} [{row['severity']}] {row['incident_type']} — {row.get('road_name') or row.get('junction_name') or 'Location TBD'}"):
+            sev_icon = {
+                "CRITICAL": icon("error", size="sm", color="#e53935"),
+                "HIGH":     icon("warning", size="sm", color="#ff7043"),
+                "MEDIUM":   icon("info", size="sm", color="#ffa726"),
+                "LOW":      icon("check_circle", size="sm", color="#66bb6a"),
+            }.get(row["severity"], icon("radio_button_unchecked", size="sm", color="#aaa"))
+            with st.expander(f"[{row['severity']}] {row['incident_type']} — {row.get('road_name') or row.get('junction_name') or 'Location TBD'}"):
+                st.markdown(
+                    f'{sev_icon} &nbsp;<strong>{row["severity"]}</strong> — {row["incident_type"]}',
+                    unsafe_allow_html=True,
+                )
                 col_a, col_b = st.columns(2)
                 col_a.markdown(f"**ID:** {row['incident_id']}")
                 col_a.markdown(f"**Type:** {row['incident_type']}")
@@ -66,7 +81,7 @@ with tab_view:
 
                 # Resolve button (officer/admin)
                 if role in ("officer", "admin") and not row.get("resolved_datetime"):
-                    if st.button(f"✅ Resolve #{row['incident_id']}", key=f"resolve_{row['incident_id']}"):
+                    if st.button(f"Resolve #{row['incident_id']}", key=f"resolve_{row['incident_id']}"):
                         res, err2 = put(
                             f"/api/incidents/{row['incident_id']}",
                             {"resolved_datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
@@ -80,7 +95,7 @@ with tab_view:
 
                 # Delete button (admin only)
                 if role == "admin":
-                    if st.button(f"🗑️ Delete #{row['incident_id']}", key=f"del_{row['incident_id']}"):
+                    if st.button(f"Delete #{row['incident_id']}", key=f"del_{row['incident_id']}"):
                         res, err2 = delete(f"/api/incidents/{row['incident_id']}", role=role)
                         if err2:
                             st.error(err2)
@@ -111,7 +126,7 @@ with tab_report:
 
         description = st.text_area("Description", height=80)
 
-        if st.button("🚨 Submit Incident", type="primary"):
+        if st.button("Submit Incident", type="primary"):
             payload = {
                 "incident_type": inc_type,
                 "severity": severity,
