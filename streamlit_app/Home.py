@@ -66,8 +66,8 @@ if data and not err:
     inc  = data.get("incident_summary", {})
     open_count = sum(s["count"] for s in inc) if isinstance(inc, list) else inc.get("open", 0)
     col1.metric("Total Junctions",   len(data.get("junctions", [])))
-    col2.metric("Avg Vehicle Count", f"{kpis.get('avg_vehicle_count', 0):.0f}")
-    col3.metric("Avg Speed (km/h)",  f"{kpis.get('avg_speed_kmph', 0):.1f}")
+    col2.metric("Avg Vehicle Count", f"{kpis.get('city_avg_vehicles', 0):.0f}")
+    col3.metric("Avg Speed (km/h)",  f"{kpis.get('city_avg_speed', 0):.1f}")
     col4.metric("Open Incidents",    open_count)
 else:
     col1.metric("Total Junctions", "—")
