@@ -4,13 +4,19 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import streamlit as st
 import pandas as pd
-from api_client import get, post, apply_light_theme, show_table
+from api_client import get, post, apply_light_theme, show_table, icon
 
 st.set_page_config(page_title="Add Observation — Urban Traffic", page_icon="➕", layout="wide")
 role = st.session_state.get("role", "public")
 apply_light_theme()
 
-st.title("➕ Add Traffic Observation")
+st.markdown(
+    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.2rem;">'
+    f'{icon("add_road", size="lg", color="#5b7fe8")}'
+    f'<span style="font-size:1.8rem;font-weight:700;color:#1a1a2e;">Add Traffic Observation</span>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
 st.caption("POST a new observation — demonstrates ACID transaction T1 + PostgreSQL trigger")
 
 if role == "public":
