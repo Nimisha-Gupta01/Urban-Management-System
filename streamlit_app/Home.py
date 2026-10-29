@@ -6,7 +6,7 @@ BITS Pilani WILP | SESAP ZC337
 import streamlit as st
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
-from api_client import get, apply_light_theme
+from api_client import get, apply_light_theme, icon
 
 st.set_page_config(
     page_title="Urban Traffic Management System",
@@ -18,7 +18,12 @@ apply_light_theme()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🚦 UTMS")
+    st.markdown(
+        f'<div style="font-size:1.15rem;font-weight:700;color:#1a1a2e;display:flex;'
+        f'align-items:center;gap:6px;margin-bottom:0.2rem;">'
+        f'{icon("traffic", size="lg", color="#5b7fe8")} UTMS</div>',
+        unsafe_allow_html=True,
+    )
     st.markdown("**Bengaluru · BITS Pilani WILP**")
     st.divider()
     role = st.selectbox(
@@ -37,7 +42,13 @@ with st.sidebar:
     )
 
 # ── Header ────────────────────────────────────────────────────────────────────
-st.title("🚦 Urban Traffic Management System")
+st.markdown(
+    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.2rem;">'
+    f'{icon("traffic", size="lg", color="#5b7fe8")}'
+    f'<span style="font-size:1.8rem;font-weight:700;color:#1a1a2e;">Urban Traffic Management System</span>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
 st.markdown(
     '<p style="color:#555;margin-top:-0.5rem;">Bengaluru, India &nbsp;·&nbsp; '
     'BITS Pilani WILP &nbsp;·&nbsp; SESAP ZC337</p>',
@@ -74,22 +85,22 @@ st.subheader("What's inside")
 left, right = st.columns(2)
 
 CARDS_LEFT = [
-    ("📊 Dashboard",
+    (f'{icon("dashboard", color="#5b7fe8")} Dashboard',
      "Live map of all junctions coloured by congestion level, city KPIs, zone breakdown, and open incident count.",
      "/Dashboard"),
-    ("🚗 Traffic Data",
+    (f'{icon("sensors", color="#5b7fe8")} Traffic Data',
      "Filter and browse all traffic observations by zone, junction, congestion level, or time window.",
      "/Traffic"),
-    ("➕ Add Observation",
+    (f'{icon("add_road", color="#5b7fe8")} Add Observation',
      "Submit a new traffic observation (officer / admin only). Auto-suggests congestion level from vehicle count.",
      "/Add_Observation"),
 ]
 
 CARDS_RIGHT = [
-    ("🚨 Incidents",
+    (f'{icon("warning_amber", color="#e53935")} Incidents',
      "View open incidents, report new ones, mark as resolved, or delete (admin only). Full audit trail in DB.",
      "/Incidents"),
-    ("🛣️ Roads & Zones",
+    (f'{icon("map", color="#5b7fe8")} Roads & Zones',
      "Browse all roads, junctions, and zones across Bengaluru. Analytics tab shows top congested junctions.",
      "/Roads_Zones"),
 ]
