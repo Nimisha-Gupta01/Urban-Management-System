@@ -7,7 +7,7 @@ import pandas as pd
 import altair as alt
 import folium
 from streamlit_folium import st_folium
-from api_client import get, apply_light_theme, show_table
+from api_client import get, apply_light_theme, show_table, icon
 
 st.set_page_config(page_title="Dashboard — Urban Traffic", page_icon="📊", layout="wide")
 import time
@@ -21,7 +21,13 @@ with st.sidebar:
     if live_mode:
         st.caption("Refreshing every 30s...")
 
-st.title("📊 Traffic Dashboard")
+st.markdown(
+    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.2rem;">'
+    f'{icon("dashboard", size="lg", color="#5b7fe8")}'
+    f'<span style="font-size:1.8rem;font-weight:700;color:#1a1a2e;">Traffic Dashboard</span>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
 st.caption("Live traffic conditions across Bengaluru junctions · auto-data from FastAPI + PostgreSQL")
 
 # ── Fetch data ────────────────────────────────────────────────────────────────
@@ -47,7 +53,7 @@ col4.metric("High Congestion Junctions", kpis.get("high_congestion_count", 0))
 st.divider()
 
 # ── Map ───────────────────────────────────────────────────────────────────────
-st.subheader("🗺️ Junction Map — Real Bengaluru Locations")
+st.markdown(f'<div style="display:flex;align-items:center;gap:7px;font-size:1.1rem;font-weight:600;color:#1a1a2e;margin:0.8rem 0 0.4rem;">{icon("map", color="#5b7fe8")} Junction Map — Real Bengaluru Locations</div>', unsafe_allow_html=True)
 
 COLOUR = {
     "SEVERE":   "red",
@@ -97,7 +103,7 @@ else:
 st.divider()
 
 # ── Junction status table ─────────────────────────────────────────────────────
-st.subheader("🚦 Junction Status")
+st.markdown(f'<div style="display:flex;align-items:center;gap:7px;font-size:1.1rem;font-weight:600;color:#1a1a2e;margin:0.8rem 0 0.4rem;">{icon("traffic", color="#5b7fe8")} Junction Status</div>', unsafe_allow_html=True)
 if junctions:
     df = pd.DataFrame(junctions)
     cols = [c for c in ["junction_name", "zone_name", "congestion_level", "vehicle_count",
@@ -110,7 +116,7 @@ else:
 left, right = st.columns(2)
 
 with left:
-    st.subheader("🏙️ Zone Summary")
+    st.markdown(f'<div style="display:flex;align-items:center;gap:7px;font-size:1.1rem;font-weight:600;color:#1a1a2e;margin:0.8rem 0 0.4rem;">{icon("location_city", color="#5b7fe8")} Zone Summary</div>', unsafe_allow_html=True)
     if zones:
         df_z = pd.DataFrame(zones)
         cols = [c for c in ["zone_name", "zone_type", "total_junctions", "total_roads",
@@ -118,7 +124,7 @@ with left:
         show_table(df_z[cols].fillna(0))
 
 with right:
-    st.subheader("🚨 Open Incidents by Severity")
+    st.markdown(f'<div style="display:flex;align-items:center;gap:7px;font-size:1.1rem;font-weight:600;color:#1a1a2e;margin:0.8rem 0 0.4rem;">{icon("bar_chart", color="#5b7fe8")} Open Incidents by Severity</div>', unsafe_allow_html=True)
     if inc_summ:
         df_i = pd.DataFrame(inc_summ)
         sev_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
