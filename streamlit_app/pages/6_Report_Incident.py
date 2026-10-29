@@ -3,12 +3,18 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import streamlit as st
-from api_client import get, apply_light_theme
+from api_client import get, apply_light_theme, icon
 
 st.set_page_config(page_title="Report Incident — Urban Traffic", page_icon="🚨", layout="centered")
 apply_light_theme()
 
-st.title("🚨 Report a Traffic Incident")
+st.markdown(
+    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.2rem;">'
+    f'{icon("report_problem", size="lg", color="#e53935")}'
+    f'<span style="font-size:1.8rem;font-weight:700;color:#1a1a2e;">Report a Traffic Incident</span>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
 st.caption("Anyone can report — no login required. Officers will review and escalate if needed.")
 
 junctions_data, _ = get("/api/junctions", role="public")
