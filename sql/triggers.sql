@@ -47,13 +47,14 @@ SELECT
     COUNT(t.obs_id) AS observations_last_24h,
     ROUND(AVG(t.vehicle_count)::NUMERIC, 0) AS avg_vehicle_count,
     ROUND(AVG(t.avg_speed_kmph)::NUMERIC, 1) AS avg_speed_kmph,
-    SUM(CASE WHEN i.resolved_datetime IS NULL THEN 1 ELSE 0 END) AS open_incidents
+    (SELECT COUNT(*) FROM Incident i2
+     INNER JOIN Road r2 ON i2.road_id = r2.road_id
+     WHERE r2.zone_id = z.zone_id AND i2.resolved_datetime IS NULL) AS open_incidents
 FROM Zone z
 LEFT JOIN Junction j ON z.zone_id = j.zone_id
 LEFT JOIN Road r ON z.zone_id = r.zone_id
 LEFT JOIN Traffic_Observation t ON j.junction_id = t.junction_id
     AND t.observation_time >= NOW() - INTERVAL '1 day'
-LEFT JOIN Incident i ON r.road_id = i.road_id
 GROUP BY z.zone_id, z.zone_name, z.zone_type;
 
 -- View 3: Open incident report with full context
