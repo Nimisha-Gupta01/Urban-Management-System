@@ -5,17 +5,23 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import streamlit as st
 import pandas as pd
 import altair as alt
-from api_client import get, apply_light_theme, show_table
+from api_client import get, apply_light_theme, show_table, icon
 
 st.set_page_config(page_title="Roads & Zones — Urban Traffic", page_icon="🛣️", layout="wide")
 role = st.session_state.get("role", "public")
 apply_light_theme()
 
-st.title("🛣️ Roads, Junctions & Zones")
+st.markdown(
+    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.2rem;">'
+    f'{icon("map", size="lg", color="#5b7fe8")}'
+    f'<span style="font-size:1.8rem;font-weight:700;color:#1a1a2e;">Roads, Junctions & Zones</span>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
 st.caption("Browse the road network and zone analytics")
 
 tab_roads, tab_junctions, tab_zones, tab_analytics, tab_signals = st.tabs(
-    ["🛣️ Roads", "🚦 Junctions", "🏙️ Zones", "📈 Analytics", "🚥 Signals"]
+    ["Roads", "Junctions", "Zones", "Analytics", "Signals"]
 )
 
 # ── Tab 1: Roads ──────────────────────────────────────────────────────────────
@@ -86,7 +92,7 @@ with tab_zones:
 
 # ── Tab 4: Analytics ─────────────────────────────────────────────────────────
 with tab_analytics:
-    st.subheader("🏆 Top 5 Most Congested Junctions (Last 24h)")
+    st.markdown(f'<div style="display:flex;align-items:center;gap:7px;font-size:1.1rem;font-weight:600;color:#1a1a2e;margin:0.8rem 0 0.4rem;">{icon("emoji_events", color="#f57c00")} Top 5 Most Congested Junctions (Last 24h)</div>', unsafe_allow_html=True)
     top5, err4 = get("/api/analytics/top-congested", role=role)
     if err4:
         st.error(err4)
@@ -105,7 +111,7 @@ with tab_analytics:
 
 # ── Tab 5: Signals ────────────────────────────────────────────────────────────
 with tab_signals:
-    st.subheader("🚥 Traffic Signal Status")
+    st.markdown(f'<div style="display:flex;align-items:center;gap:7px;font-size:1.1rem;font-weight:600;color:#1a1a2e;margin:0.8rem 0 0.4rem;">{icon("traffic", color="#5b7fe8")} Traffic Signal Status</div>', unsafe_allow_html=True)
     st.caption("Green phase durations are updated automatically by the adaptive signal engine")
 
     signals_data, sig_err = get("/api/signals", role=role)
