@@ -12,7 +12,18 @@ ROLE_HEADERS = {
 }
 
 LIGHT_CSS = """
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 <style>
+    /* ── Material Icons baseline alignment ──────────────────────────── */
+    .material-icons {
+        font-size: 18px;
+        vertical-align: middle;
+        line-height: 1;
+    }
+    .mat-icon-lg  { font-size: 26px !important; vertical-align: middle; line-height: 1; }
+    .mat-icon-sm  { font-size: 15px !important; vertical-align: middle; line-height: 1; }
+    .mat-icon-accent { color: #5b7fe8 !important; }
+
     /* ── Global background + body text ──────────────────────────────── */
     .stApp, .main, .block-container {
         background-color: #f7f8fa !important;
@@ -400,3 +411,16 @@ def delete(path, role="public"):
         return None, f"API error {e.response.status_code}: {e.response.text}"
     except Exception as e:
         return None, str(e)
+
+
+def icon(name: str, *, size: str = "", color: str = "", extra: str = "") -> str:
+    classes = "material-icons"
+    if size:
+        classes += f" mat-icon-{size}"
+    style_parts = []
+    if color:
+        style_parts.append(f"color:{color}")
+    if extra:
+        style_parts.append(extra)
+    style_attr = f' style="{";".join(style_parts)}"' if style_parts else ""
+    return f'<span class="{classes}"{style_attr}>{name}</span>'
