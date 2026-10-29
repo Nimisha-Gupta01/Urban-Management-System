@@ -20,25 +20,30 @@
 
 ```
 Urban_Traffic_Management_System/
-├── docker-compose.yml          ← runs all 3 services
-├── Dockerfile                  ← shared image for API + Streamlit
+├── docker-compose.yml          ← runs all 4 services (postgres, api, streamlit, simulator)
+├── Dockerfile                  ← shared image for API + Streamlit + simulator
 ├── requirements.txt
 ├── init_db.py                  ← seeds schema + sample data on first run
 ├── sql/
-│   ├── schema.sql              ← CREATE TABLE statements (PostgreSQL)
+│   ├── schema.sql              ← CREATE TABLE statements (PostgreSQL + PostGIS)
 │   ├── queries.sql             ← analytical queries
-│   └── triggers.sql            ← triggers, views, stored procedures
+│   └── triggers.sql            ← triggers, views (ZoneSummary, OpenIncidentReport, etc.)
 ├── app/
-│   └── main.py                 ← FastAPI backend (all /api/* routes)
+│   ├── main.py                 ← FastAPI backend (all /api/* routes)
+│   └── scheduler.py            ← APScheduler: adaptive signal + congestion decay
+├── data/
+│   ├── simulator.py            ← live traffic sensor simulator (POST every 30s)
+│   └── kaggle_import.py        ← one-time Kaggle dataset importer
 ├── streamlit_app/
 │   ├── Home.py                 ← landing page (KPIs + feature cards)
-│   ├── api_client.py           ← shared HTTP client, theme, table helper
+│   ├── api_client.py           ← shared HTTP client, Material Icons theme, table helper
 │   └── pages/
-│       ├── 1_Dashboard.py      ← live map + junction status
-│       ├── 2_Traffic.py        ← filter & search observations
+│       ├── 1_Dashboard.py      ← live map + junction status + zone summary
+│       ├── 2_Traffic.py        ← filter & search observations + peak hours chart
 │       ├── 3_Add_Observation.py← POST new traffic observation
-│       ├── 4_Incidents.py      ← incident management
-│       └── 5_Roads_Zones.py    ← road network & zone analytics
+│       ├── 4_Incidents.py      ← incident management (view/resolve/delete)
+│       ├── 5_Roads_Zones.py    ← road network, zone analytics, signals
+│       └── 6_Report_Incident.py← public citizen incident reporting (no login)
 └── docs/
     ├── SRS.md
     ├── ER_Diagram.drawio
@@ -146,12 +151,13 @@ Switch between **Public / Officer / Admin** to simulate role-based access:
 
 | Page | What it shows |
 |---|---|
-| **Home** | Live city KPIs (observations, avg speed, congestion count) + quick-nav cards |
+| **Home** | Live city KPIs (observations, avg speed, open incidents) + quick-nav feature cards |
 | **Dashboard** | Interactive Bengaluru map with colour-coded junctions, zone summary, open incidents chart |
 | **Traffic Data** | Filter observations by zone / junction / congestion level / time window; peak-hours chart |
 | **Add Observation** | Submit a new traffic observation (Officer/Admin only) — demonstrates ACID transaction T1 + PostgreSQL trigger |
-| **Incidents** | View, filter, update, and resolve incidents (Admin can delete) |
-| **Roads & Zones** | Browse road network, junctions, zone analytics, top-5 congested junctions chart |
+| **Incidents** | View, filter, resolve and delete incidents; Admin can delete; severity icon indicators |
+| **Roads & Zones** | Browse road network, junctions, zone analytics, top-5 congested junctions chart, signal status tab |
+| **Report Incident** | Public citizen form — no login required, submits to `/api/incidents/report` |
 
 ### Map legend
 | Colour | Congestion level |
@@ -193,3 +199,30 @@ Switch between **Public / Officer / Admin** to simulate role-based access:
 | Streamlit UI | owns | — |
 | Transactions + Concurrency | owns | — |
 | Docker Setup | — | owns |
+| Kaggle Data Import | — | owns |
+
+---
+
+## Recent Changes (Nimisha — 2026-10-29)
+
+### UI Overhaul — Material Icons
+Replaced all emoji icons across every page with **Google Material Icons** (CDN).
+
+- Added `icon()` helper function in `streamlit_app/api_client.py`
+- Google Fonts CDN loaded via `LIGHT_CSS` — no new dependencies
+- All 6 pages updated: Home, Dashboard, Traffic, Add Observation, Incidents, Roads & Zones, Report Incident
+- Page tab favicons kept as emoji (Streamlit `page_icon=` does not support HTML)
+
+### Bug Fixes
+| Bug | Fix |
+|---|---|
+| Home KPIs showing 0 for Avg Vehicles / Avg Speed | Wrong JSON key names (`avg_vehicle_count` → `city_avg_vehicles`, `avg_speed_kmph` → `city_avg_speed`) |
+| Zone Summary `open_incidents` wildly wrong (showed 84, 40… instead of 0/1) | SQL cross-join bug in `ZoneSummary` view — observations × incidents was multiplying counts. Fixed with correlated subquery in `sql/triggers.sql` and patched live in DB |
+| Feature card titles (Dashboard, Incidents) rendering in blue | Browser default `<a>` link colour bleeding through — fixed with explicit CSS in `api_client.py` |
+| "Refresh" button on Incidents page solid black (text invisible) | Global `color: #1a1a2e !important` on `span`/`p` overriding button text — fixed by targeting button child elements explicitly |
+
+### New Page
+- `streamlit_app/pages/6_Report_Incident.py` — public citizen incident report form (no login required), calls `POST /api/incidents/report`
+
+### Data Verification
+Full DB → API → UI audit completed. All numbers on screen are live from PostgreSQL — no static/hardcoded values anywhere. The simulator (`data/simulator.py`) writes a new traffic observation every ~30 seconds.
