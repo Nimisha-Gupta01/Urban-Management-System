@@ -30,7 +30,7 @@ with tab_view:
     with col2:
         sev_filter = st.selectbox("Severity", ["All", "CRITICAL", "HIGH", "MEDIUM", "LOW"])
     with col3:
-        if st.button("🔄 Refresh"):
+        if st.button("Refresh"):
             st.rerun()
 
     params = {"open_only": str(show_open).lower(), "limit": 100}
