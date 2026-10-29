@@ -9,7 +9,7 @@ import folium
 from streamlit_folium import st_folium
 from api_client import get, apply_light_theme, show_table, icon
 
-st.set_page_config(page_title="Dashboard — Urban Traffic", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Dashboard — Urban Traffic", page_icon="📈", layout="wide")
 import time
 
 role = st.session_state.get("role", "public")

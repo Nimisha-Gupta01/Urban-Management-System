@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 from api_client import get, post, apply_light_theme, show_table, icon
 
-st.set_page_config(page_title="Add Observation — Urban Traffic", page_icon="➕", layout="wide")
+st.set_page_config(page_title="Add Observation — Urban Traffic", page_icon="📝", layout="wide")
 role = st.session_state.get("role", "public")
 apply_light_theme()
 

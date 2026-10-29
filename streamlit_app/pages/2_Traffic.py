@@ -7,7 +7,7 @@ import pandas as pd
 import altair as alt
 from api_client import get, apply_light_theme, show_table, icon
 
-st.set_page_config(page_title="Traffic Data — Urban Traffic", page_icon="🚗", layout="wide")
+st.set_page_config(page_title="Traffic Data — Urban Traffic", page_icon="📡", layout="wide")
 role = st.session_state.get("role", "public")
 apply_light_theme()
 
