@@ -5,13 +5,19 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import streamlit as st
 import pandas as pd
 import altair as alt
-from api_client import get, apply_light_theme, show_table
+from api_client import get, apply_light_theme, show_table, icon
 
 st.set_page_config(page_title="Traffic Data — Urban Traffic", page_icon="🚗", layout="wide")
 role = st.session_state.get("role", "public")
 apply_light_theme()
 
-st.title("🚗 Traffic Observations")
+st.markdown(
+    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.2rem;">'
+    f'{icon("sensors", size="lg", color="#5b7fe8")}'
+    f'<span style="font-size:1.8rem;font-weight:700;color:#1a1a2e;">Traffic Observations</span>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
 st.caption("Search and filter traffic observations from PostgreSQL")
 
 # ── Filters ───────────────────────────────────────────────────────────────────
@@ -21,7 +27,7 @@ junctions_data, _ = get("/api/junctions", role=role)
 zone_options = {z["zone_name"]: z["zone_id"] for z in (zones_data or [])}
 junc_options = {j["junction_name"]: j["junction_id"] for j in (junctions_data or [])}
 
-with st.expander("🔍 Filters", expanded=True):
+with st.expander("Filters", expanded=True):
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -69,7 +75,7 @@ if not df.empty:
     st.divider()
 
     # ── Peak hours bar chart ──────────────────────────────────────────────────
-    st.subheader("⏰ Peak Hours (avg vehicles)")
+    st.markdown(f'<div style="display:flex;align-items:center;gap:7px;font-size:1.1rem;font-weight:600;color:#1a1a2e;margin:0.8rem 0 0.4rem;">{icon("schedule", color="#5b7fe8")} Peak Hours (avg vehicles)</div>', unsafe_allow_html=True)
     ph_data, _ = get("/api/analytics/peak-hours", role=role)
     if ph_data:
         df_ph = pd.DataFrame(ph_data).sort_values("hour_of_day")
@@ -87,7 +93,7 @@ if not df.empty:
     st.divider()
 
     # ── Results table ─────────────────────────────────────────────────────────
-    st.subheader("📋 Observation Records")
+    st.markdown(f'<div style="display:flex;align-items:center;gap:7px;font-size:1.1rem;font-weight:600;color:#1a1a2e;margin:0.8rem 0 0.4rem;">{icon("table_rows", color="#5b7fe8")} Observation Records</div>', unsafe_allow_html=True)
     show_cols = [c for c in ["observation_time", "junction_name", "road_name", "zone_name",
                              "vehicle_count", "avg_speed_kmph", "congestion_level",
                              "weather_condition", "data_source"] if c in df.columns]
